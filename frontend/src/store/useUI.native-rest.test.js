@@ -13,6 +13,8 @@ vi.mock('../lib/rest-alert.js', () => ({
   holdRestAlert: vi.fn(),
   disarmRestAlert: vi.fn(),
   bindNativeRest: vi.fn(cb => { h.native = cb }),
+  buildWorkoutNotification: vi.fn(() => ({})),
+  syncWorkoutNotification: vi.fn(() => Promise.resolve(true)),
 }))
 vi.mock('../lib/sound.js', () => ({ beep: vi.fn(), chime: vi.fn(), vibrate: vi.fn() }))
 vi.mock('../lib/api.js', () => ({ api: vi.fn(() => Promise.resolve({ ok: true })) }))
@@ -216,5 +218,25 @@ describe('the notification’s own buttons', () => {
     useUI.getState().startRest(90)
     h.native({ type: 'skip' })
     expect(useUI.getState().timer).toBe(null)
+  })
+
+  it('complete_set from notification finishes current set and starts rest', () => {
+    useStore.setState({
+      S: {
+        accent: 'lime',
+        restSec: 60,
+        active: {
+          id: 'test-workout',
+          name: 'Workout',
+          start: Date.now(),
+          cur: 0,
+          entries: [{ id: '0025', sets: [{ w: 50, r: 10, done: false }, { w: 50, r: 10, done: false }] }],
+        },
+      },
+    })
+    h.native({ type: 'complete_set' })
+    expect(useStore.getState().S.active.entries[0].sets[0].done).toBe(true)
+    expect(useUI.getState().timer).toBeTruthy()
+    expect(useUI.getState().timer.total).toBe(60)
   })
 })

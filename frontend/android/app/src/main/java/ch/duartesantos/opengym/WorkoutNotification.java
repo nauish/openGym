@@ -9,16 +9,21 @@ import androidx.core.app.NotificationManagerCompat;
 final class WorkoutNotification {
     static final int ID = RestAlert.COUNTDOWN_ID;
     static final String ACTION_DISMISSED = "ch.duartesantos.opengym.workout.DISMISSED";
+    static final String ACTION_COMPLETE_SET = "ch.duartesantos.opengym.workout.COMPLETE_SET";
 
     private WorkoutNotification() {}
 
     static synchronized void syncSession(Context context, String sessionId, String title,
                                          long startedAt, int setsDone, int setsTotal,
                                          String workoutText, String restText, String pausedLabel,
+                                         String setSummary,
+                                         String exerciseName, String exerciseImage, String setProgress, String completeLabel,
                                          String pause, String resume, String minus, String plus,
                                          String skip, int accent, int ink) {
         WorkoutNotificationStore.syncSession(context, sessionId, title, startedAt, setsDone, setsTotal,
-                workoutText, restText, pausedLabel, pause, resume, minus, plus, skip, accent, ink);
+                workoutText, restText, pausedLabel, setSummary,
+                exerciseName, exerciseImage, setProgress, completeLabel,
+                pause, resume, minus, plus, skip, accent, ink);
         postCurrent(context);
     }
 
@@ -55,7 +60,7 @@ final class WorkoutNotification {
         if (isDismissed(context) && savedState(context).rest != null) RestAlert.stopCountdown(context);
     }
 
-    static synchronized Notification current(Context context) {
+    static synchronized WorkoutNotificationRenderer.Rendered current(Context context) {
         return WorkoutNotificationRenderer.render(context, savedState(context));
     }
 
@@ -66,7 +71,7 @@ final class WorkoutNotification {
         // The service additionally refreshes running legacy rest cards once per second.
         try {
             NotificationManagerCompat.from(context).notify(ID,
-                    WorkoutNotificationRenderer.render(context, state));
+                    WorkoutNotificationRenderer.render(context, state).notification);
         } catch (SecurityException ignored) {
             // Denied notification permission does not cancel the rest alarm.
         }

@@ -9,6 +9,10 @@
 //
 // The web build keeps Web Push (useUI). This file no-ops there; MOBILE is a build-time flag.
 import { t } from './i18n-core.js'
+import { exerciseNameFor } from './i18n.js'
+import { EXIDX, imgSrc } from './exercises.js'
+import { nextOpenSet } from './workout-keys.js'
+import { isWarmupRow } from './workout-model.js'
 import { ACCENTS, ACCENT_INK, argb } from './format.js'
 import { MOBILE, isAndroid } from './mobile.js'
 
@@ -104,15 +108,42 @@ export function disarmRestAlert() {
 export function buildWorkoutNotification(active, { setsDone = 0, setsTotal = 0, accent = 'lime' } = {}) {
   if (!active?.id || active.backfill || active.editingWorkoutId) return null
   const count = `${Math.max(0, setsDone)}/${Math.max(0, setsTotal)}`
+  const setSummary = t('{0} sets', count)
   const colors = accentColors(accent)
+
+  const next = nextOpenSet(active.entries, active.cur)
+  let exerciseName = ''
+  let exerciseImage = ''
+  let setProgress = ''
+  if (next && active.entries?.[next.idx]) {
+    const entry = active.entries[next.idx]
+    exerciseName = EXIDX[entry.id] ? exerciseNameFor(EXIDX[entry.id]) : (entry.n || entry.id || '')
+    if (EXIDX[entry.id]?.img) exerciseImage = imgSrc(EXIDX[entry.id])
+    const sets = Array.isArray(entry.sets) ? entry.sets : []
+    const curSet = sets[next.i]
+    const warm = isWarmupRow(curSet)
+    const phaseNum = sets.slice(0, next.i + 1).filter(x => isWarmupRow(x) === warm).length
+    const totalPhase = sets.filter(x => isWarmupRow(x) === warm).length
+    if (warm) {
+      setProgress = `${t('Warm-up')} ${phaseNum}/${totalPhase}`
+    } else {
+      setProgress = t('Set {0}', `${phaseNum}/${totalPhase}`)
+    }
+  }
+
   return {
     sessionId: String(active.id),
     title: active.name || t('Workout'),
     startedAt: active.start,
     setsDone: Math.max(0, setsDone),
     setsTotal: Math.max(0, setsTotal),
-    workoutText: `${t('Workout')} · ${t('{0} sets', count)}`,
-    restText: `${t('Rest')} · ${t('{0} sets', count)}`,
+    workoutText: t('Workout'),
+    restText: t('Rest'),
+    setSummary,
+    exerciseName,
+    exerciseImage,
+    setProgress,
+    completeLabel: t('Done'),
     pausedLabel: t('Paused'),
     pause: t('Pause'),
     resume: t('Resume'),

@@ -4,7 +4,8 @@ import android.content.SharedPreferences;
 
 /** Immutable input shared by every notification presentation, independent of device branding. */
 final class WorkoutNotificationState {
-    final String sessionId, title, workoutText, restText, pausedLabel;
+    final String sessionId, title, workoutText, restText, pausedLabel, setSummary;
+    final String exerciseName, exerciseImage, setProgress, completeSetLabel;
     final String pauseLabel, resumeLabel, minusLabel, plusLabel, skipLabel;
     final long startedAt;
     final int setsDone, setsTotal, accent, ink;
@@ -17,6 +18,11 @@ final class WorkoutNotificationState {
         workoutText = text(p, "workoutText", "Workout");
         restText = text(p, "restText", "Rest");
         pausedLabel = text(p, "pausedLabel", "Paused");
+        setSummary = text(p, "setSummary", "");
+        exerciseName = text(p, "exerciseName", "");
+        exerciseImage = text(p, "exerciseImage", "");
+        setProgress = text(p, "setProgress", "");
+        completeSetLabel = text(p, "completeSetLabel", "");
         pauseLabel = text(p, "pauseLabel", "Pause");
         resumeLabel = text(p, "resumeLabel", "Resume");
         minusLabel = text(p, "minusLabel", "− 15s");

@@ -6,6 +6,7 @@ import { t } from '../lib/i18n.js'
 import { deviceId } from '../lib/push.js'
 import { MOBILE } from '../lib/mobile.js'
 import { armRestAlert, bindNativeRest, buildWorkoutNotification, disarmRestAlert, holdRestAlert, syncWorkoutNotification } from '../lib/rest-alert.js'
+import { completeCurrentWorkoutSet } from '../lib/workout-complete-set.js'
 import { setsDoneActive, setUnitsTotal } from '../lib/history.js'
 import { useStore } from './useStore.js'
 
@@ -115,7 +116,18 @@ const runRest = (set, get) => {
       // The native alarm is left armed: this tick can come a little early, and with the screen
       // locked it never runs at all.
       get().toast(t('Rest over — next set!'))
-      if (!MOBILE) maybeRestNotification()
+      if (!MOBILE) {
+        maybeRestNotification()
+      } else {
+        const { S } = useStore.getState()
+        const active = S?.active
+        const workoutNotice = buildWorkoutNotification(active, {
+          setsDone: setsDoneActive(active),
+          setsTotal: setUnitsTotal(active?.entries),
+          accent: S?.accent,
+        })
+        if (workoutNotice) syncWorkoutNotification(workoutNotice).catch(() => {})
+      }
       cancelPushRestTimer()
       stopRestTicking()
       set({ timer: { ...tm, left: 0, ready: true } })
@@ -348,6 +360,12 @@ export const useUI = create((set, get) => ({
 bindNativeRest(ev => {
   if (!ev) return
   if (ev.type === 'skip') { useUI.getState().stopRest(); return }
+  if (ev.type === 'complete_set') {
+    const active = useStore.getState().S?.active
+    if (ev.sessionId && String(active?.id) !== ev.sessionId) return
+    completeCurrentWorkoutSet()
+    return
+  }
   const left = Math.ceil((ev.leftMs || 0) / 1000)
   if (!(left > 0)) return
   const total = Math.max(left, Math.round((ev.totalMs || 0) / 1000))

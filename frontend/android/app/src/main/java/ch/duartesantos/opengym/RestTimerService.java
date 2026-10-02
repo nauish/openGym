@@ -14,8 +14,8 @@ import android.util.Log;
 import androidx.core.app.NotificationManagerCompat;
 
 /**
- * Foreground while a rest is running. Android 16's Chronometer owns the visible countdown;
- * older Android versions keep their existing once-per-second progress card.
+ * Foreground while a rest is running. Supported HyperOS and Android 16 timers render themselves;
+ * older Android fallback cards refresh once per second while this service still checks the end.
  */
 public class RestTimerService extends Service {
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -25,21 +25,9 @@ public class RestTimerService extends Service {
     private boolean paused;
     private boolean running;
     private boolean foregroundStarted;
+    private boolean periodicNotificationRefresh;
     private PowerManager.WakeLock cpu;
-    private final Runnable tick = new Runnable() {
-        @Override
-        public void run() {
-            if (!running || paused || endsAt <= 0) return;
-            long left = endsAt - System.currentTimeMillis();
-            if (left <= 0) {
-                reachEnd();
-                return;
-            }
-            if (WorkoutNotificationRenderer.needsPeriodicUpdates()) show();
-            // Next on the clock's next whole second, so the last run lands on the end itself.
-            handler.postDelayed(this, ((left - 1) % 1000) + 1);
-        }
-    };
+    private final Runnable tick = () -> updateCountdown(true);
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -95,8 +83,8 @@ public class RestTimerService extends Service {
         running = true;
         holdCpuUntilEnd();
         handler.removeCallbacks(tick);
-        if (!WorkoutNotificationRenderer.needsPeriodicUpdates()) show();
-        tick.run();
+        show();
+        updateCountdown(false);
         return START_NOT_STICKY;
     }
 
@@ -110,6 +98,11 @@ public class RestTimerService extends Service {
         // Destruction or dismissal is not a logical rest completion. Keep the saved state
         // and alarm available for recovery; explicit cancel, skip and alarm delivery finish it.
         super.onDestroy();
+        // Some vendor notification managers remove the old foreground card during service
+        // teardown, even after DETACH. Publish the workout card after that teardown so it
+        // cannot be removed along with the rest service's notification.
+        WorkoutNotificationState state = WorkoutNotification.savedState(this);
+        if (state.rest == null && !state.sessionId.isEmpty()) WorkoutNotification.postCurrent(this);
     }
 
     private void togglePause() {
@@ -128,7 +121,7 @@ public class RestTimerService extends Service {
         }
         persistRest();
         show();
-        if (!paused) tick.run();
+        if (!paused) updateCountdown(false);
         emit("pause");
     }
 
@@ -165,11 +158,23 @@ public class RestTimerService extends Service {
             holdCpuUntilEnd();
             RestAlert.updateAlarm(this, endsAt);
             handler.removeCallbacks(tick);
-            handler.post(tick);
         }
         persistRest();
         show();
+        if (!paused) updateCountdown(false);
         emit("adjust");
+    }
+
+    private void updateCountdown(boolean refreshNotification) {
+        if (!running || paused || endsAt <= 0) return;
+        long left = endsAt - System.currentTimeMillis();
+        if (left <= 0) {
+            reachEnd();
+            return;
+        }
+        if (refreshNotification && periodicNotificationRefresh) show();
+        // Next on the clock's next whole second, so the last run lands on the end itself.
+        handler.postDelayed(tick, ((left - 1) % 1000) + 1);
     }
 
     /**
@@ -223,7 +228,9 @@ public class RestTimerService extends Service {
 
     private void show() {
         try {
-            Notification n = WorkoutNotification.current(this);
+            WorkoutNotificationRenderer.Rendered rendered = WorkoutNotification.current(this);
+            Notification n = rendered.notification;
+            periodicNotificationRefresh = rendered.needsPeriodicUpdates;
             if (!foregroundStarted) {
                 if (Build.VERSION.SDK_INT >= 34) {
                     startForeground(RestAlert.COUNTDOWN_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);

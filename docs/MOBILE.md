@@ -268,7 +268,7 @@ Native responsibilities live in `frontend/android/app/src/main/java/ch/duartesan
 - `WorkoutNotificationState` provides an immutable snapshot, including localized labels,
   session progress, theme and a named `Rest` value with an absolute deadline.
 - `WorkoutNotificationRenderer` builds standard notifications and notification actions.
-  It owns the decision about whether presentation needs periodic updates.
+  It chooses the presentation and its periodic refresh requirements.
 - `LegacyRestNotification` contains the existing RemoteViews card for Android before API 36.
 - `RestTimerService` owns rest execution, pause/resume, adjustment and foreground lifetime.
   It requests a notification from the coordinator rather than constructing its own UI.
@@ -284,26 +284,121 @@ JavaScript locale packs, and is persisted before native rendering. Native action
 commands; rendering reads labels and colors from the current saved snapshot rather than static
 process fields or stale PendingIntent extras.
 
-### Future HyperOS integration
+### HyperIsland presentation
 
-[HyperIsland's builder](https://hyperisland.d4viddf.com/docs/builder/) produces a JSON payload
-and resource bundle to attach to a regular Android notification. Its
-[Timer component](https://hyperisland.d4viddf.com/docs/components/timer/) supports running and
-paused countdowns/chronometers with absolute timestamps.
+`frontend/android/app/build.gradle` pins `io.github.d4viddf:hyperisland_kit:0.4.4`. The library's
+[README](https://github.com/D4vidDf/HyperIsland-ToolKit#installation) still shows `0.4.0`; Maven
+Central metadata and the published [0.4.4 artifact](https://central.sonatype.com/artifact/io.github.d4viddf/hyperisland_kit/0.4.4)
+and [source JAR](https://repo.maven.apache.org/maven2/io/github/d4viddf/hyperisland_kit/0.4.4/hyperisland_kit-0.4.4-sources.jar)
+were checked before selecting this fixed version. The app stays Java. The existing Kotlin Gradle
+plugin was already present; the AAR supplies Kotlin stdlib `2.2.21` and serialization JSON `1.9.0`
+at runtime. No Kotlin source or additional compiler plugin is needed by this adapter.
 
-Add a small presentation adapter alongside `WorkoutNotificationRenderer`. The adapter should:
+The published AAR manifest declares min API 26, while this app's minSdk remains 23. The manifest
+uses `tools:overrideLibrary` for this dependency, and the renderer does not call its adapter below
+API 26. The library's documented `isSupported(context)` check is the capability gate; there are
+no separate manufacturer checks in app code.
 
-- Check `HyperIslandNotification.isSupported(context)` before selecting the HyperOS presentation.
-- Use the same snapshot for Timer, Progress and Actions. A running rest uses `rest.endsAt`, a
-  paused rest uses `rest.pausedLeftMs`, and the session chronometer uses `startedAt`. Follow the
-  library's timer-type and timestamp contract when constructing each mode.
-- Reuse the existing notification action PendingIntents and localized labels.
-- Merge the generated bundle, including `miui.focus.param`, with the standard builder's extras
-  using `addExtras`; do not replace extras used by Android's chronometer or promotion flags.
-- Keep the same notification ID, alarms, service lifecycle and session dismissal policy.
-- Select the presentation and its refresh requirements in the renderer, including HyperOS on
-  Android versions below API 36. Fall back to the existing Android presentation if capability
-  detection or payload generation fails.
+`HyperIslandNotificationAdapter` is the only code that builds vendor components or edits its JSON.
+The Kotlin companion methods use Java's `HyperIslandNotification.Companion` interop. Workout and
+rest cards use template 17's image/text and bottom `textButton` layout, with `ChatInfo` as the
+main body to retain a native chronometer in its second line. Both phases share button colors and
+text-only action styling. Workout puts the localized current set before the exercise name in the
+heading and elapsed time below. Rest shows the Rest heading and remaining timer; a paused rest
+puts its localized Paused status in the heading and fixed remaining digits below. Running cards
+pass null content because nonempty ChatInfo content hides the chronometer in HyperOS.
+Card artwork uses a separate `workout_card` resource key from the island's `workout` icon.
+Workout cards use the current exercise's JPG from the existing `imgSrc()` media configuration;
+missing images and download failures retain the dumbbell. The app badge uses an independent
+`picInfo` resource at the right. HyperOS fills a missing `ChatInfo.appIconPkg` with the
+posting app's icon, so that field explicitly references a transparent picture resource to
+suppress the left overlay while keeping the native chronometer.
 
-The third-party toolkit is not currently a dependency. This boundary allows its device-specific
-payload to be introduced without moving workout state or rest execution into vendor code.
+The compact pill uses a blank ticker, the dumbbell icon, the localized current set and one timer.
+The current set appears on the left and elapsed time on the right; the exercise name stays in the
+notification card. Rest replaces the set label with the localized Rest label and uses its own timer
+and controls. There is no second progress-text block. A paused rest uses fixed remaining digits
+and a `-2` timer type.
+
+Workout uses one Done text button; rest uses two text buttons, Pause/Resume and Skip. The adapter
+registers them as hidden actions before calling `setTextButtons()`: 0.4.4 converts text buttons to references but does not
+register their PendingIntents by itself. They use no icon resource, so the text button model does
+not point at a missing picture. The native Android action row is Pause/Resume, +15s and Skip; −15s
+remains on the app and the existing expanded legacy RemoteViews. The `dismissible` island option
+stays false, as in the 0.4.4 default. It controls island swipe behavior; it is not wired to finish a
+rest or cancel its alarm. The existing Android delete-intent/session dismissal policy is unchanged.
+There is no dedicated notification/pill close action until its intended effect is confirmed.
+
+TimerInfo values use one `now` captured for that render and millisecond timestamps:
+
+- Running rest: type `-1`, `timerWhen = rest.endsAt`, `timerTotal = rest.totalMs`.
+- Paused rest: type `-2`, `timerWhen = now + rest.pausedLeftMs`, `timerTotal = rest.totalMs`.
+- Session chronometer: type `1`, `timerWhen = startedAt`, no fixed total (`0`).
+- `timerSystemCurrent` is that same render's `now` in every mode.
+
+The 0.4.4 `setChatInfo()` API accepts the full TimerInfo, so the card timer is passed directly.
+The [TimerInfo contract](https://hyperisland.d4viddf.com/docs/components/timer/) defines the timer
+types and absolute millisecond fields. The Big Island convenience methods do not accept all four
+fields, so the adapter corrects the generated Big Island `sameWidthDigitInfo.timerInfo` node.
+For a paused rest it also supplies the fixed remaining digits while retaining Big Island's `-2`
+paused timer value. This avoids assuming that a stopped card timer will be rendered by the OS.
+
+The library's `HyperPicture` carries static Android Icons/Bitmaps. Its animated components only
+support Xiaomi's built-in Lottie resource keys, not the exercise catalogue's GIF files or custom
+Lottie JSON. `WorkoutNotificationArtwork` loads static thumbnails on a background executor,
+with a 4 MiB memory cache, bounded downloads/decoding, timeouts and a retry cooldown. Rendering
+never waits for the network. Completed loads refresh only the same session and image; stale
+loads cannot restore a finished or dismissed notification. Do not animate GIFs by reposting
+notifications frame by frame.
+
+The resource bundle and `miui.focus.param` are merged with `NotificationCompat.Builder.addExtras()`.
+For a running rest, the notification card keeps Android's countdown chronometer enabled and the
+pill receives HyperIsland TimerInfo; both use the same end time. The session still has no foreground
+service or per-second notification update loop: its card and Big Island use system-rendered count-up
+timers. A paused rest disables dynamic card timing and shows the saved remaining time.
+
+The renderer selects and returns both the notification and its refresh policy. A supported device
+uses HyperIsland on API 26 and later after support detection and payload generation succeed,
+including below API 36. Unsupported devices or a vendor payload failure use the existing
+RemoteViews rest card with once-per-second notification refresh below API 36, and Android's
+standard chronometer/Live Update path on API 36 and later. Vendor failures are logged and do not
+escape into the alarm, foreground service, or Capacitor bridge. Regardless of the display path,
+the rest service still runs its end check and the scheduled rest alarm remains active.
+
+Locale packs remain the source for all displayed labels. On API 36+, the standard Android
+fallback continues to request promoted ongoing presentation where the system permits it.
+
+### Verification and device acceptance
+
+Validated in this checkout:
+
+- From `frontend/android`, `./gradlew :app:assembleDebug` succeeded with JDK 21 at
+  `/tmp/opengym-temurin21/jdk-21.0.12.1+1/Contents/Home` and produced
+  `frontend/android/app/build/outputs/apk/debug/app-debug.apk`.
+- `node scripts/check-locales.mjs` passed: 17 locales with 1,706 keys each.
+- `node scripts/check-source-strings.mjs --strict` passed: all 1,345 source strings are present
+  in the locale packs.
+- `git diff --check` passed. `npm run build:mobile` completed its Vite build but returned an error
+  during iOS sync because CocoaPods is not installed in this environment. `npx cap sync android`
+  then succeeded and copied the web assets and plugin updates to Android.
+
+User-provided screenshots of the prior build showed duplicate text in the compact pill and a
+separated `Workout · 1/3 sets` row on the card. Two earlier card screenshots showed the session
+count-up advancing; they do not verify a running rest countdown. The updated APK has not been
+captured on-device: the specified ADB device disconnected before it could be installed. Verify the
+running-rest countdown, pause/resume transition, compact pill and card layout, and visible action
+bindings on-device. API 26–35 fallback, API 36+ Live Update fallback, language/theme changes,
+dismissal, and service recreation also still need confirmation. A successful build is not recorded
+as visual acceptance.
+
+Notification Done completes the next open set using the existing unilateral/superset rules.
+The final set calls the app's existing `finishWorkout()` flow to save history, compute records,
+run backup, stop rest and clear the native notification. The lazy call re-checks the session id
+and remaining sets before saving, so a delayed command cannot finish a different or edited session.
+The native Done PendingIntent also carries a session id; actions from an older session or during
+rest are ignored. Current set labels reuse the locale packs (`Set {0}`, `Warm-up`, `Duration`).
+
+On rest-service teardown, `onDestroy()` detaches the foreground notification before reposting
+the saved workout card. This covers vendor managers that remove the old card during service
+teardown, even when the rest had already transitioned to workout state. An inactive or still
+resting session is not reposted.

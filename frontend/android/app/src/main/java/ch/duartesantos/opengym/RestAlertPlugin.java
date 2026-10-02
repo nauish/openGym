@@ -56,6 +56,14 @@ public class RestAlertPlugin extends Plugin {
         instance.notifyListeners("rest", data);
     }
 
+    static void emitCompleteSet(String sessionId) {
+        if (instance == null) return;
+        JSObject data = new JSObject();
+        data.put("type", "complete_set");
+        data.put("sessionId", sessionId);
+        instance.notifyListeners("rest", data);
+    }
+
     @PluginMethod
     public void schedule(PluginCall call) {
         Context ctx = getContext();
@@ -185,6 +193,9 @@ public class RestAlertPlugin extends Plugin {
         String minus = call.getString("minus", "− 15s");
         String plus = call.getString("plus", "+ 15s");
         String skip = call.getString("skip", "Skip");
+        String exerciseName = call.getString("exerciseName", "");
+        String setProgress = call.getString("setProgress", "");
+        String completeLabel = call.getString("completeLabel", "");
         RestAlert.setAccentColor(accent, ink);
         WorkoutNotification.syncSession(
                 app,
@@ -196,6 +207,11 @@ public class RestAlertPlugin extends Plugin {
                 call.getString("workoutText", "Workout"),
                 call.getString("restText", "Rest"),
                 call.getString("pausedLabel", "Paused"),
+                call.getString("setSummary", ""),
+                exerciseName,
+                call.getString("exerciseImage", ""),
+                setProgress,
+                completeLabel,
                 pause,
                 resume,
                 minus,

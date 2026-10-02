@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { armRestAlert, buildRestAlert, disarmRestAlert, REST_ALERT_ID, REST_CHANNEL_ID, REST_QUIET_CHANNEL_ID } from './rest-alert.js'
+import { armRestAlert, buildRestAlert, buildWorkoutNotification, disarmRestAlert, REST_ALERT_ID, REST_CHANNEL_ID, REST_QUIET_CHANNEL_ID } from './rest-alert.js'
 
 describe('buildRestAlert', () => {
   const now = 1_700_000_000_000
@@ -49,5 +49,36 @@ describe('rest alert outside the mobile build', () => {
   it('does not schedule an alarm, so the caller keeps the server push', async () => {
     await expect(armRestAlert(Date.now() + 90_000, { title: 'Rest over', sound: true })).resolves.toBe(false)
     disarmRestAlert()
+  })
+})
+
+describe('buildWorkoutNotification', () => {
+  it('extracts current exercise name and set progress', () => {
+    const active = {
+      id: 'active-123',
+      name: 'Leg Day',
+      start: 1_700_000_000_000,
+      cur: 0,
+      entries: [
+        {
+          id: '0025',
+          sets: [
+            { w: 100, r: 5, done: true },
+            { w: 100, r: 5, done: false },
+            { w: 100, r: 5, done: false },
+          ],
+        },
+      ],
+    }
+    const notif = buildWorkoutNotification(active, { setsDone: 1, setsTotal: 3, accent: 'lime' })
+    expect(notif).toMatchObject({
+      sessionId: 'active-123',
+      title: 'Leg Day',
+      setsDone: 1,
+      setsTotal: 3,
+      completeLabel: 'Done',
+    })
+    expect(notif.exerciseName).toBeTruthy()
+    expect(notif.setProgress).toContain('2/3')
   })
 })

@@ -17,6 +17,8 @@ final class WorkoutNotificationStore {
     static synchronized void syncSession(Context context, String sessionId, String title,
                                          long startedAt, int setsDone, int setsTotal,
                                          String workoutText, String restText, String pausedLabel,
+                                         String setSummary,
+                                         String exerciseName, String exerciseImage, String setProgress, String completeLabel,
                                          String pause, String resume, String minus, String plus,
                                          String skip, int accent, int ink) {
         SharedPreferences prefs = prefs(context);
@@ -31,6 +33,11 @@ final class WorkoutNotificationStore {
                 .putString("workoutText", workoutText)
                 .putString("restText", restText)
                 .putString("pausedLabel", pausedLabel)
+                .putString("setSummary", setSummary)
+                .putString("exerciseName", exerciseName)
+                .putString("exerciseImage", exerciseImage)
+                .putString("setProgress", setProgress)
+                .putString("completeSetLabel", completeLabel)
                 .putString("pauseLabel", pause)
                 .putString("resumeLabel", resume)
                 .putString("minusLabel", minus)
