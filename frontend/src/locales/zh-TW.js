@@ -167,6 +167,7 @@ export default {
   'New PR:': '突破個人紀錄：',
   'Nice!': '太棒了！',
   'Nothing logged yet': '尚未記錄任何內容',
+  'Workout ended. No exercises to save.': '訓練已結束，沒有動作可儲存。',
   'You haven’t checked off any sets. Finish the workout anyway?': '你尚未勾選任何組數。仍要結束訓練嗎？',
   'Finish anyway': '強制結束',
   'Finish early?': '提早結束？',

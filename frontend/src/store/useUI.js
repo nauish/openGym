@@ -28,6 +28,7 @@ const bookRestEnd = (endsAt, totalSec) => {
     setsDone: setsDoneActive(active),
     setsTotal: setUnitsTotal(active?.entries),
     accent: S.accent,
+    restForIdx: useUI.getState().timer?.forIdx,
   })
   if (workoutNotice) syncWorkoutNotification(workoutNotice).catch(() => {})
   armRestAlert(endsAt, { title: t('Rest over — next set!'), countdownTitle: t('Rest'), totalSec, accent: S.accent, sound: !!S.sound, vibrate: S.vibrate !== false })

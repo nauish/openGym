@@ -3,4 +3,7 @@
     <string name="rest_channel_name">休息計時器</string>
     <string name="rest_quiet_channel_name">無振動的休息計時器</string>
     <string name="rest_channel_desc">目前運動狀態和休息倒數。只有在鎖定畫面允許顯示通知時才會顯示。</string>
+    <string name="island_time">歷時時間</string>
+    <string name="island_sets">組數</string>
+    <string name="island_remaining">剩餘時間</string>
 </resources>

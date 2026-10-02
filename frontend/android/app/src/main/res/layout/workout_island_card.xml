@@ -1,0 +1,25 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:orientation="vertical" android:padding="16dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="12dp">
+            <TextView android:id="@+id/island_exercise" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="23sp" android:textStyle="bold" android:textColor="#FFFFFF" android:maxLines="2" android:ellipsize="end" />
+            <TextView android:id="@+id/island_session" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="11sp" android:textColor="#99FFFFFF" android:layout_marginTop="3dp" android:maxLines="1" android:ellipsize="end" />
+        </LinearLayout>
+        <ImageView android:id="@+id/island_artwork" android:layout_width="52dp" android:layout_height="52dp" android:scaleType="fitCenter" android:contentDescription="@null" />
+    </LinearLayout>
+    <ImageView android:layout_width="match_parent" android:layout_height="1dp" android:background="#22FFFFFF" android:layout_marginTop="10dp" android:layout_marginBottom="10dp" android:contentDescription="@null" />
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="8dp">
+            <TextView android:id="@+id/island_time_label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/island_time" android:textColor="#99FFFFFF" android:textSize="10sp" />
+            <Chronometer android:id="@+id/island_clock" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#FFFFFF" android:textSize="16sp" android:fontFeatureSettings="tnum" android:textStyle="bold" />
+            <TextView android:id="@+id/island_paused_clock" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#FFFFFF" android:textSize="16sp" android:textStyle="bold" android:visibility="gone" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginEnd="8dp">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/island_sets" android:textColor="#99FFFFFF" android:textSize="10sp" />
+            <TextView android:id="@+id/island_set_count" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="#FFFFFF" android:textSize="15sp" android:textStyle="bold" android:maxLines="1" />
+        </LinearLayout>
+        <ImageView android:id="@+id/island_primary" android:layout_width="40dp" android:layout_height="40dp" android:padding="10dp" android:background="@drawable/island_card_button" android:src="@drawable/ic_notification_check" />
+        <ImageView android:id="@+id/island_secondary" android:layout_width="40dp" android:layout_height="40dp" android:padding="10dp" android:layout_marginStart="6dp" android:background="@drawable/island_card_button" android:src="@drawable/ic_notification_open" />
+    </LinearLayout>
+</LinearLayout>

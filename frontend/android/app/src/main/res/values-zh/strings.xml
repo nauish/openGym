@@ -3,4 +3,7 @@
     <string name="rest_channel_name">休息计时器</string>
     <string name="rest_quiet_channel_name">无振动的休息计时器</string>
     <string name="rest_channel_desc">当前训练状态和休息倒计时。仅当锁屏允许显示通知时才会显示。</string>
+    <string name="island_time">历时时间</string>
+    <string name="island_sets">组数</string>
+    <string name="island_remaining">剩余时间</string>
 </resources>

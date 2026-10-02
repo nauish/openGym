@@ -75,10 +75,12 @@ function Shell() {
   const isGuest = useStore(s => s.isGuest())
   const needsMobileOnboarding = useStore(s => s.needsMobileOnboarding)
   const langV = useLang()   // re-renders the whole shell when the language (pack) changes
+  const restForIdx = useUI(s => s.timer && !s.timer.ready ? s.timer.forIdx : null)
   const workoutNotice = buildWorkoutNotification(S.active, {
     setsDone: setsDoneActive(S.active),
     setsTotal: setUnitsTotal(S.active?.entries),
     accent: S.accent,
+    restForIdx,
   })
   // A primitive key keeps ordinary store writes (weight edits, notes, etc.) from reposting the
   // notification. It changes only when its visible session summary or selected language changes.

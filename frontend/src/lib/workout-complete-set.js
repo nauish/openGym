@@ -6,6 +6,8 @@ import { supersetUnits, bestWeightForEntry, setsDoneActive, setUnitsTotal } from
 import { nextUnfinishedUnit, supersetFlowStep, restAfterSet, restSecFor, warmupRestSecFor } from './supersetFlow.js'
 import { buildWorkoutNotification, syncWorkoutNotification } from './rest-alert.js'
 import { beep, vibrate } from './sound.js'
+import { nav } from './nav.js'
+import { t } from './i18n.js'
 
 /**
  * Completes the current open set in the active workout and transitions to rest if earned.
@@ -14,15 +16,13 @@ import { beep, vibrate } from './sound.js'
 export function completeCurrentWorkoutSet() {
   const store = useStore.getState()
   const active = store.S?.active
-  if (!active || !Array.isArray(active.entries) || !active.entries.length) return false
+  if (!active || !Array.isArray(active.entries)) return false
   const next = nextOpenSet(active.entries, active.cur)
   if (!next) {
     // Also recover a workout whose last set was checked before this completion flow existed.
-    if (setUnitsTotal(active.entries) > 0) {
-      finishCompletedWorkout(active.id)
-      return true
-    }
-    return false
+    // The notification command also handles empty (0/0) sessions.
+    finishCompletedWorkout(active.id)
+    return true
   }
   const { idx, i, side } = next
 
@@ -117,7 +117,15 @@ function finishCompletedWorkout(sessionId) {
   import('../sheets.jsx').then(({ finishWorkout }) => {
     const active = useStore.getState().S?.active
     if (active?.id !== sessionId || nextOpenSet(active.entries, active.cur)) return
-    finishWorkout()
+    if (setUnitsTotal(active.entries) === 0) {
+      useStore.getState().update(s => { s.active = null })
+      useUI.getState().stopRest()
+      useUI.getState().stopWork()
+      nav('/home')
+      useUI.getState().toast(t('Workout ended. No exercises to save.'))
+    } else {
+      finishWorkout()
+    }
     // Clear the native timer immediately, including when the WebView is in the background and
     // the App effect that normally mirrors S.active cannot repaint yet.
     if (!useStore.getState().S?.active) syncWorkoutNotification(null).catch(() => {})

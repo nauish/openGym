@@ -105,13 +105,19 @@ export function disarmRestAlert() {
 }
 
 /** Builds the localized native-notification snapshot from the active session. */
-export function buildWorkoutNotification(active, { setsDone = 0, setsTotal = 0, accent = 'lime' } = {}) {
+export function buildWorkoutNotification(active, { setsDone = 0, setsTotal = 0, accent = 'lime', restForIdx = null } = {}) {
   if (!active?.id || active.backfill || active.editingWorkoutId) return null
   const count = `${Math.max(0, setsDone)}/${Math.max(0, setsTotal)}`
   const setSummary = t('{0} sets', count)
   const colors = accentColors(accent)
 
-  const next = nextOpenSet(active.entries, active.cur)
+  let next = nextOpenSet(active.entries, active.cur)
+  // During rest, describe the set that earned the break instead of the next open set.
+  if (Number.isInteger(restForIdx) && active.entries?.[restForIdx]) {
+    const rows = active.entries[restForIdx].sets || []
+    const completed = rows.findLastIndex(row => row.done)
+    if (completed >= 0) next = { idx: restForIdx, i: completed }
+  }
   let exerciseName = ''
   let exerciseImage = ''
   let setProgress = ''

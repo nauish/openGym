@@ -53,6 +53,28 @@ describe('rest alert outside the mobile build', () => {
 })
 
 describe('buildWorkoutNotification', () => {
+  it('keeps the completed set during rest and advances again when rest ends', () => {
+    const active = {
+      id: 'resting', start: 1000, cur: 0,
+      entries: [{ id: '0025', sets: [{ done: true }, { done: false }, { done: false }] }],
+    }
+    expect(buildWorkoutNotification(active, { restForIdx: 0 }).setProgress).toContain('1/3')
+    expect(buildWorkoutNotification(active).setProgress).toContain('2/3')
+  })
+
+  it('keeps the prior exercise at its last set when the next exercise is selected', () => {
+    const active = {
+      id: 'between-exercises', start: 1000, cur: 1,
+      entries: [
+        { id: '0025', sets: [{ done: true }, { done: true }] },
+        { id: '0031', sets: [{ done: false }, { done: false }, { done: false }] },
+      ],
+    }
+    const rest = buildWorkoutNotification(active, { restForIdx: 0 })
+    expect(rest.setProgress).toContain('2/2')
+    expect(rest.exerciseName).not.toBe(buildWorkoutNotification(active).exerciseName)
+  })
+
   it('extracts current exercise name and set progress', () => {
     const active = {
       id: 'active-123',

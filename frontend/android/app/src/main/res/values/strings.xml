@@ -8,4 +8,7 @@
     <string name="rest_channel_name">Rest timer</string>
     <string name="rest_quiet_channel_name">Rest timer, without vibration</string>
     <string name="rest_channel_desc">Active workout status and rest countdown. The lock screen shows them only when notifications are allowed there.</string>
+    <string name="island_time">Elapsed time</string>
+    <string name="island_sets">Sets</string>
+    <string name="island_remaining">Remaining</string>
 </resources>
