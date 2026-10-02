@@ -1,0 +1,6 @@
+<resources>
+    <string name="rest_countdown_channel_name">Timer allenamento</string>
+    <string name="rest_channel_name">Timer recupero</string>
+    <string name="rest_quiet_channel_name">Timer recupero senza vibrazione</string>
+    <string name="rest_channel_desc">Stato dell’allenamento e conto alla rovescia del recupero. La schermata di blocco li mostra solo se le notifiche sono consentite.</string>
+</resources>

@@ -1,0 +1,6 @@
+<resources>
+    <string name="rest_countdown_channel_name">운동 타이머</string>
+    <string name="rest_channel_name">휴식 타이머</string>
+    <string name="rest_quiet_channel_name">진동 없는 휴식 타이머</string>
+    <string name="rest_channel_desc">진행 중인 운동 상태와 휴식 시간 카운트다운입니다. 잠금 화면에는 알림 표시가 허용된 경우에만 표시됩니다.</string>
+</resources>

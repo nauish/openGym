@@ -252,3 +252,58 @@ membership, the distribution certificate and profile as protected file variables
   it: a foreground service (`specialUse`) keeps the countdown in the notification and holds a
   wake lock until the end, so the end of a rest sounds on time with the screen locked; the
   rest-over alarm is only its fallback.
+
+
+## Android workout notifications
+
+The active workout uses notification ID `41`. Rest replaces the session presentation on the
+same ID; finishing or skipping rest restores the session chronometer. The rest-over alert
+uses ID `42`. Only rest owns a foreground service; the session chronometer is rendered by
+Android without a session timer service.
+
+Native responsibilities live in `frontend/android/app/src/main/java/ch/duartesantos/opengym/`:
+
+- `WorkoutNotification` coordinates publishing, session dismissal and explicit completion.
+- `WorkoutNotificationStore` reads and writes the existing `workout_notification` preferences.
+- `WorkoutNotificationState` provides an immutable snapshot, including localized labels,
+  session progress, theme and a named `Rest` value with an absolute deadline.
+- `WorkoutNotificationRenderer` builds standard notifications and notification actions.
+  It owns the decision about whether presentation needs periodic updates.
+- `LegacyRestNotification` contains the existing RemoteViews card for Android before API 36.
+- `RestTimerService` owns rest execution, pause/resume, adjustment and foreground lifetime.
+  It requests a notification from the coordinator rather than constructing its own UI.
+- `RestAlert` owns the alarm, rest-over alert and audio/vibration delivery.
+
+`onDestroy()` only releases service resources. It must not finish a rest: process destruction
+and notification dismissal leave the saved rest and its alarm intact. Cancellation, skipping
+and alarm delivery are explicit completion paths. A dismissed notification stays suppressed
+for the current session, including when the app pauses/resumes rest.
+
+Display copy comes from `buildWorkoutNotification()` and `buildRestAlert()` using the existing
+JavaScript locale packs, and is persisted before native rendering. Native action intents carry
+commands; rendering reads labels and colors from the current saved snapshot rather than static
+process fields or stale PendingIntent extras.
+
+### Future HyperOS integration
+
+[HyperIsland's builder](https://hyperisland.d4viddf.com/docs/builder/) produces a JSON payload
+and resource bundle to attach to a regular Android notification. Its
+[Timer component](https://hyperisland.d4viddf.com/docs/components/timer/) supports running and
+paused countdowns/chronometers with absolute timestamps.
+
+Add a small presentation adapter alongside `WorkoutNotificationRenderer`. The adapter should:
+
+- Check `HyperIslandNotification.isSupported(context)` before selecting the HyperOS presentation.
+- Use the same snapshot for Timer, Progress and Actions. A running rest uses `rest.endsAt`, a
+  paused rest uses `rest.pausedLeftMs`, and the session chronometer uses `startedAt`. Follow the
+  library's timer-type and timestamp contract when constructing each mode.
+- Reuse the existing notification action PendingIntents and localized labels.
+- Merge the generated bundle, including `miui.focus.param`, with the standard builder's extras
+  using `addExtras`; do not replace extras used by Android's chronometer or promotion flags.
+- Keep the same notification ID, alarms, service lifecycle and session dismissal policy.
+- Select the presentation and its refresh requirements in the renderer, including HyperOS on
+  Android versions below API 36. Fall back to the existing Android presentation if capability
+  detection or payload generation fails.
+
+The third-party toolkit is not currently a dependency. This boundary allows its device-specific
+payload to be introduced without moving workout state or rest execution into vendor code.

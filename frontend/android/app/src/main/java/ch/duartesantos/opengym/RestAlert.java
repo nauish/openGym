@@ -6,9 +6,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
-import android.content.res.ColorStateList;
 import android.content.Intent;
-import android.widget.RemoteViews;
 import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioTrack;
@@ -30,7 +28,6 @@ public final class RestAlert {
     static final String ACTION_MINUS = "ch.duartesantos.opengym.rest.MINUS";
     static final String ACTION_PLUS = "ch.duartesantos.opengym.rest.PLUS";
     static final String ACTION_SKIP = "ch.duartesantos.opengym.rest.SKIP";
-    static final String ACTION_ACCENT = "ch.duartesantos.opengym.rest.ACCENT";
     static final String ACTION_HOLD = "ch.duartesantos.opengym.rest.HOLD";
     static final String CHANNEL_ID = "rest-over";
     /**
@@ -43,11 +40,6 @@ public final class RestAlert {
     private static boolean lastSound = true;
     private static boolean lastVibrate = true;
     private static String lastChannel = CHANNEL_ID;
-    private static String labPause = "Pause";
-    private static String labResume = "Resume";
-    private static String labMinus = "\u2212 15s";
-    private static String labPlus = "+ 15s";
-    private static String labSkip = "Skip";
     private static int lastAccent = 0xFF30D158;
     private static int lastInk = 0xFF000000;
     static final int COUNTDOWN_ID = 41;
@@ -95,7 +87,7 @@ public final class RestAlert {
         lastSound = sound;
         lastVibrate = vibrate;
         lastChannel = channelId;
-        startCountdown(ctx, at, totalMs, countdownTitle);
+        startCountdown(ctx, at, totalMs);
     }
 
     public static void setAccentColor(int accent, int ink) {
@@ -103,16 +95,9 @@ public final class RestAlert {
         lastInk = ink;
     }
 
-    public static void setLabels(String pause, String resume, String minus, String plus, String skip) {
-        if (pause != null && !pause.isEmpty()) labPause = pause;
-        if (resume != null && !resume.isEmpty()) labResume = resume;
-        if (minus != null && !minus.isEmpty()) labMinus = minus;
-        if (plus != null && !plus.isEmpty()) labPlus = plus;
-        if (skip != null && !skip.isEmpty()) labSkip = skip;
-    }
-
     public static void cancel(Context ctx, int id) {
         stopCountdown(ctx);
+        WorkoutNotification.finishRest(ctx);
         AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
         PendingIntent pi = PendingIntent.getBroadcast(ctx, id, alarmIntent(ctx), FLAGS);
         am.cancel(pi);
@@ -149,6 +134,7 @@ public final class RestAlert {
     /** Runs off the main thread. Holds the CPU until the tone has finished. */
     public static void fire(Context ctx, Intent intent) {
         if (!claim(intent.getLongExtra("at", 0))) return;
+        WorkoutNotification.finishRest(ctx);
         PowerManager.WakeLock cpu = null;
         try {
             PowerManager pm = (PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
@@ -329,18 +315,16 @@ public final class RestAlert {
         am.cancel(pi);
     }
 
-    static void startCountdown(Context ctx, long endsAt, long totalMs, String title) {
+    static void startCountdown(Context ctx, long endsAt, long totalMs) {
+        long leftMs = Math.max(0, endsAt - System.currentTimeMillis());
+        long duration = totalMs > 0 ? totalMs : Math.max(1000, leftMs);
+        WorkoutNotification.setRest(ctx, endsAt, duration, false, leftMs, lastAccent, lastInk);
+        // A user dismissal is session-scoped. Keep the alarm for the end, but do not recreate a
+        // foreground notification that the user explicitly removed.
+        if (WorkoutNotification.isDismissed(ctx)) return;
         Intent i = new Intent(ctx, RestTimerService.class);
         i.putExtra("endsAt", endsAt);
-        i.putExtra("totalMs", totalMs);
-        i.putExtra("title", title == null || title.isEmpty() ? "Rest" : title);
-        i.putExtra("pause", labPause);
-        i.putExtra("resume", labResume);
-        i.putExtra("minus", labMinus);
-        i.putExtra("plus", labPlus);
-        i.putExtra("skip", labSkip);
-        i.putExtra("accent", lastAccent);
-        i.putExtra("ink", lastInk);
+        i.putExtra("totalMs", duration);
         try {
             if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i);
             else ctx.startService(i);
@@ -355,94 +339,19 @@ public final class RestAlert {
         } catch (Exception ignored) { /* already gone */ }
     }
 
-    /**
-     * One clock and one bar, in both the collapsed and the expanded card. The standard
-     * title/text/subtext slots are left empty: Samsung prints each of them, which stacked
-     * the same time three times next to the bar.
-     */
-    @SuppressWarnings("deprecation")
-    static Notification countdownNotification(Context ctx, long leftMs, long totalMs, boolean paused,
-                                              String pause, String resume, String minus, String plus, String skip,
-                                              int accent, int ink) {
-        int max = (int) Math.max(1, Math.round(totalMs / 1000.0));
-        int left = (int) Math.min(max, (Math.max(0, leftMs) + 999) / 1000);
-        String clock = clock(left);
-        NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
-        ensureCountdownChannel(ctx, nm);
-        RemoteViews compact = new RemoteViews(ctx.getPackageName(), R.layout.rest_countdown);
-        fillClock(compact, clock, max, left, accent);
-        RemoteViews expanded = new RemoteViews(ctx.getPackageName(), R.layout.rest_countdown_big);
-        fillClock(expanded, clock, max, left, accent);
-        applyAccent(expanded, accent, ink);
-        expanded.setTextViewText(R.id.rest_pause, paused ? resume : pause);
-        expanded.setTextViewText(R.id.rest_minus, minus);
-        expanded.setTextViewText(R.id.rest_plus, plus);
-        expanded.setTextViewText(R.id.rest_skip, skip);
-        expanded.setOnClickPendingIntent(R.id.rest_pause, control(ctx, ACTION_PAUSE, 51));
-        expanded.setOnClickPendingIntent(R.id.rest_minus, control(ctx, ACTION_MINUS, 52));
-        expanded.setOnClickPendingIntent(R.id.rest_plus, control(ctx, ACTION_PLUS, 53));
-        expanded.setOnClickPendingIntent(R.id.rest_skip, control(ctx, ACTION_SKIP, 54));
-        Notification.Builder b = Build.VERSION.SDK_INT >= 26
-                ? new Notification.Builder(ctx, COUNTDOWN_CHANNEL_ID)
-                : new Notification.Builder(ctx);
-        b.setSmallIcon(R.drawable.ic_stat_dumbbell)
-                .setShowWhen(false)
-                .setOngoing(true)
-                .setCategory(Notification.CATEGORY_PROGRESS)
-                .setVisibility(Notification.VISIBILITY_PUBLIC)
-                .setColor(accent)
-                .setContentIntent(openApp(ctx))
-                .setLocalOnly(true);
-        if (Build.VERSION.SDK_INT >= 24) {
-            b.setCustomContentView(compact);
-            b.setCustomBigContentView(expanded);
-            b.setStyle(new Notification.DecoratedCustomViewStyle());
-        } else {
-            b.setContentTitle(clock);
-            b.setProgress(max, left, false);
-        }
-        if (Build.VERSION.SDK_INT >= 26) b.setOnlyAlertOnce(true);
-        else b.setPriority(Notification.PRIORITY_DEFAULT);
-        // Android 12+ holds the first foreground-service notification for 10 seconds
-        // unless the notification asks to be shown immediately. Later rests in the
-        // same process skip that hold, which is why only the first one looked late.
-        if (Build.VERSION.SDK_INT >= 31) {
-            b.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE);
-        }
-        return b.build();
-    }
-
-    private static void fillClock(RemoteViews views, String clock, int max, int left, int accent) {
-        views.setTextViewText(R.id.rest_clock, clock);
-        views.setProgressBar(R.id.rest_bar, max, left, false);
-        if (Build.VERSION.SDK_INT >= 31) {
-            views.setColorStateList(R.id.rest_bar, "setProgressTintList", ColorStateList.valueOf(accent));
-        }
-    }
-
-    private static void applyAccent(RemoteViews views, int accent, int ink) {
-        views.setTextColor(R.id.rest_pause, accent);
-        views.setTextColor(R.id.rest_minus, accent);
-        views.setTextColor(R.id.rest_plus, accent);
-        views.setTextColor(R.id.rest_skip, ink);
-        if (Build.VERSION.SDK_INT >= 31) {
-            views.setColorStateList(R.id.rest_skip, "setBackgroundTintList", ColorStateList.valueOf(accent));
-        }
-    }
-
-    private static PendingIntent control(Context ctx, String action, int code) {
-        Intent i = new Intent(ctx, RestTimerService.class);
-        i.setAction(action);
-        return PendingIntent.getService(ctx, code, i, FLAGS);
-    }
-
     static String clock(int sec) {
         return (sec / 60) + ":" + (sec % 60 < 10 ? "0" : "") + (sec % 60);
     }
 
-    private static void ensureCountdownChannel(Context ctx, NotificationManager nm) {
+    static void ensureCountdownChannel(Context ctx, NotificationManager nm) {
         if (Build.VERSION.SDK_INT < 26) return;
-        if (nm.getNotificationChannel(COUNTDOWN_CHANNEL_ID) != null) return;
+        NotificationChannel existing = nm.getNotificationChannel(COUNTDOWN_CHANNEL_ID);
+        if (existing != null) {
+            existing.setName(ctx.getString(R.string.rest_countdown_channel_name));
+            existing.setDescription(ctx.getString(R.string.rest_channel_desc));
+            nm.createNotificationChannel(existing);
+            return;
+        }
         NotificationChannel channel = new NotificationChannel(
                 COUNTDOWN_CHANNEL_ID,
                 ctx.getString(R.string.rest_countdown_channel_name),

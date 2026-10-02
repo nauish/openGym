@@ -44,6 +44,7 @@ import { isFav, toggleFav, sortFavouritesFirst } from './lib/favourites.js'
 import { buildSessionEntries, buildPlannedEntry, builtOutOfProgression } from './lib/session-start.js'
 import { joinSessionNoProg } from './lib/session-noprog.js'
 import { buildCombinedEntries, deriveSessionName } from './lib/session-merge.js'
+import { buildWorkoutNotification, syncWorkoutNotification } from './lib/rest-alert.js'
 import { workoutsOn, backfillStart, backfillEnd, completeBackfill, historyAsOf, sessionHistory } from './lib/backfill.js'
 import { moveWorkout, sameWorkout, startTimeOf, durationMinOf, setWorkoutDuration, rebuildPrHistory } from './lib/workout-date.js'
 import { editCompletedSession, editLeftEmpty, editedRecord, editChangesNothing } from './lib/session-edit.js'
@@ -2188,6 +2189,13 @@ export function beginWorkout(routineIds, bw) {
       workoutView: st.workoutView || 'cards',
     }
   })
+  const active = S().active
+  const activeNotice = buildWorkoutNotification(active, {
+    setsDone: setsDoneActive(active),
+    setsTotal: setUnitsTotal(active.entries),
+    accent: S().accent,
+  })
+  syncWorkoutNotification(activeNotice, { requestPermission: true }).catch(() => {})
   useUI.getState().stopRest()
   nav('/workout')
 }

@@ -9,10 +9,13 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
+import android.util.Log;
+
+import androidx.core.app.NotificationManagerCompat;
 
 /**
- * Foreground while a rest is running. Reposts one clock and one bar every second, and
- * applies the same controls as the in-app timer: pause, −15s, +15s, skip.
+ * Foreground while a rest is running. Android 16's Chronometer owns the visible countdown;
+ * older Android versions keep their existing once-per-second progress card.
  */
 public class RestTimerService extends Service {
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -21,13 +24,7 @@ public class RestTimerService extends Service {
     private long pausedLeft;
     private boolean paused;
     private boolean running;
-    private String pauseLabel = "Pause";
-    private String resumeLabel = "Resume";
-    private String minusLabel = "\u2212 15s";
-    private String plusLabel = "+ 15s";
-    private String skipLabel = "Skip";
-    private int accent = 0xFF30D158;
-    private int ink = 0xFF000000;
+    private boolean foregroundStarted;
     private PowerManager.WakeLock cpu;
     private final Runnable tick = new Runnable() {
         @Override
@@ -38,7 +35,7 @@ public class RestTimerService extends Service {
                 reachEnd();
                 return;
             }
-            show();
+            if (WorkoutNotificationRenderer.needsPeriodicUpdates()) show();
             // Next on the clock's next whole second, so the last run lands on the end itself.
             handler.postDelayed(this, ((left - 1) % 1000) + 1);
         }
@@ -52,17 +49,14 @@ public class RestTimerService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent == null ? null : intent.getAction();
-        if (RestAlert.ACTION_ACCENT.equals(action)) {
-            if (!running) {
-                // Only this start: a countdown asked for right behind it must still come up.
-                stopSelf(startId);
-                return START_NOT_STICKY;
-            }
-            accent = intent.getIntExtra("accent", accent);
-            ink = intent.getIntExtra("ink", ink);
-            RestAlert.setAccentColor(accent, ink);
-            show();
+        if (WorkoutNotification.isDismissed(this)) {
+            stopSelf(startId);
             return START_NOT_STICKY;
+        }
+        if (!running && isRestControl(action) && restoreSavedRest()) {
+            // Notification actions can arrive after Android recreated the service process.
+            // Promote before applying the action so the service remains valid on Android 8+.
+            show();
         }
         if (RestAlert.ACTION_HOLD.equals(action)) {
             if (running) hold(intent.getLongExtra("leftMs", 0), intent.getLongExtra("totalMs", 0));
@@ -75,14 +69,17 @@ public class RestTimerService extends Service {
         }
         if (RestAlert.ACTION_PAUSE.equals(action)) {
             if (running) togglePause();
+            else stopSelf(startId);
             return START_NOT_STICKY;
         }
         if (RestAlert.ACTION_MINUS.equals(action)) {
             if (running) nudge(-15_000);
+            else stopSelf(startId);
             return START_NOT_STICKY;
         }
         if (RestAlert.ACTION_PLUS.equals(action)) {
             if (running) nudge(15_000);
+            else stopSelf(startId);
             return START_NOT_STICKY;
         }
         long nextEnd = intent == null ? 0 : intent.getLongExtra("endsAt", 0);
@@ -97,14 +94,8 @@ public class RestTimerService extends Service {
         paused = false;
         running = true;
         holdCpuUntilEnd();
-        pauseLabel = text(intent, "pause", pauseLabel);
-        resumeLabel = text(intent, "resume", resumeLabel);
-        minusLabel = text(intent, "minus", minusLabel);
-        plusLabel = text(intent, "plus", plusLabel);
-        skipLabel = text(intent, "skip", skipLabel);
-        if (intent != null && intent.hasExtra("accent")) accent = intent.getIntExtra("accent", accent);
-        if (intent != null && intent.hasExtra("ink")) ink = intent.getIntExtra("ink", ink);
         handler.removeCallbacks(tick);
+        if (!WorkoutNotificationRenderer.needsPeriodicUpdates()) show();
         tick.run();
         return START_NOT_STICKY;
     }
@@ -116,6 +107,8 @@ public class RestTimerService extends Service {
         releaseCpu();
         endsAt = 0;
         stopForegroundCompat();
+        // Destruction or dismissal is not a logical rest completion. Keep the saved state
+        // and alarm available for recovery; explicit cancel, skip and alarm delivery finish it.
         super.onDestroy();
     }
 
@@ -132,9 +125,10 @@ public class RestTimerService extends Service {
             holdCpuUntilEnd();
             RestAlert.updateAlarm(this, endsAt);
             handler.removeCallbacks(tick);
-            tick.run();
         }
+        persistRest();
         show();
+        if (!paused) tick.run();
         emit("pause");
     }
 
@@ -150,6 +144,7 @@ public class RestTimerService extends Service {
         if (total > 0) totalMs = total;
         handler.removeCallbacks(tick);
         releaseCpu();
+        persistRest();
         show();
     }
 
@@ -172,6 +167,7 @@ public class RestTimerService extends Service {
             handler.removeCallbacks(tick);
             handler.post(tick);
         }
+        persistRest();
         show();
         emit("adjust");
     }
@@ -216,6 +212,7 @@ public class RestTimerService extends Service {
         RestAlert.cancelAlarmOnly(this, RestAlert.NOTIFICATION_ID);
         RestAlertPlugin.emit("skip", 0, 0, 0, false);
         stopForegroundCompat();
+        WorkoutNotification.finishRest(this);
         stopSelf();
     }
 
@@ -226,28 +223,58 @@ public class RestTimerService extends Service {
 
     private void show() {
         try {
-            long left = paused ? pausedLeft : Math.max(0, endsAt - System.currentTimeMillis());
-            Notification n = RestAlert.countdownNotification(
-                    this, left, totalMs, paused, pauseLabel, resumeLabel, minusLabel, plusLabel, skipLabel, accent, ink);
-            if (Build.VERSION.SDK_INT >= 34) {
-                startForeground(RestAlert.COUNTDOWN_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
-            } else {
-                startForeground(RestAlert.COUNTDOWN_ID, n);
+            Notification n = WorkoutNotification.current(this);
+            if (!foregroundStarted) {
+                if (Build.VERSION.SDK_INT >= 34) {
+                    startForeground(RestAlert.COUNTDOWN_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+                } else {
+                    startForeground(RestAlert.COUNTDOWN_ID, n);
+                }
+                foregroundStarted = true;
+            } else if (!WorkoutNotification.isDismissed(this)) {
+                NotificationManagerCompat.from(this).notify(RestAlert.COUNTDOWN_ID, n);
             }
         } catch (Exception e) {
+            Log.w("openGym", "Cannot publish rest foreground notification", e);
             stopSelf();
         }
     }
 
-    private static String text(Intent intent, String key, String fallback) {
-        if (intent == null) return fallback;
-        String v = intent.getStringExtra(key);
-        return v == null || v.isEmpty() ? fallback : v;
+    private void persistRest() {
+        long left = paused ? pausedLeft : Math.max(0, endsAt - System.currentTimeMillis());
+        long displayedEnd = paused ? System.currentTimeMillis() + left : endsAt;
+        WorkoutNotificationState state = WorkoutNotification.savedState(this);
+        WorkoutNotification.setRest(this, displayedEnd, totalMs, paused, left, state.accent, state.ink);
+    }
+
+    private boolean restoreSavedRest() {
+        WorkoutNotificationState.Rest rest = WorkoutNotification.savedState(this).rest;
+        if (rest == null) return false;
+        endsAt = rest.endsAt;
+        totalMs = rest.totalMs;
+        pausedLeft = rest.pausedLeftMs;
+        paused = rest.paused;
+        running = true;
+        if (!paused) holdCpuUntilEnd();
+        handler.removeCallbacks(tick);
+        return true;
+    }
+
+    private static boolean isRestControl(String action) {
+        return RestAlert.ACTION_HOLD.equals(action)
+                || RestAlert.ACTION_SKIP.equals(action)
+                || RestAlert.ACTION_PAUSE.equals(action)
+                || RestAlert.ACTION_MINUS.equals(action)
+                || RestAlert.ACTION_PLUS.equals(action);
     }
 
     @SuppressWarnings("deprecation")
     private void stopForegroundCompat() {
-        if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE);
-        else stopForeground(true);
+        if (!foregroundStarted) return;
+        // ID 41 transitions back to the session notification instead of disappearing when
+        // the rest-only foreground service ends.
+        if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_DETACH);
+        else stopForeground(false);
+        foregroundStarted = false;
     }
 }

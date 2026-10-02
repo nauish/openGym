@@ -37,10 +37,13 @@
             android:name=".RestAlertReceiver"
             android:exported="false" />
 
-        <!-- Reposts the rest countdown every second so the notification shade keeps the
-             clock and a shrinking bar after the WebView is frozen. The lock screen shows
-             it only when the user allows notifications there. specialUse: this is a timer,
-             not media playback. -->
+        <!-- Records a user's dismissal of the active workout Live Update. -->
+        <receiver
+            android:name=".WorkoutNotificationReceiver"
+            android:exported="false" />
+
+        <!-- Runs only during an active rest. Android 16 renders the rest time with its
+             notification Chronometer; earlier Android versions keep the current progress card. -->
         <service
             android:name=".RestTimerService"
             android:exported="false"
@@ -70,6 +73,8 @@
          an inexact alarm can come most of a rest late, so the countdown sounds the end itself
          and the alarm is only its fallback. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Android 16+ can promote eligible, user-initiated workout rest notifications. -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
     <!-- The buzz at the end of a rest or a hold and on a set tick (navigator.vibrate). The
          WebView drops every vibrate call from an app without this permission, so the phone
          stayed still. A normal permission: granted at install, no prompt. -->

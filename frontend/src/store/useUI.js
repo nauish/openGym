@@ -5,7 +5,8 @@ import { api } from '../lib/api.js'
 import { t } from '../lib/i18n.js'
 import { deviceId } from '../lib/push.js'
 import { MOBILE } from '../lib/mobile.js'
-import { armRestAlert, bindNativeRest, disarmRestAlert, holdRestAlert } from '../lib/rest-alert.js'
+import { armRestAlert, bindNativeRest, buildWorkoutNotification, disarmRestAlert, holdRestAlert, syncWorkoutNotification } from '../lib/rest-alert.js'
+import { setsDoneActive, setUnitsTotal } from '../lib/history.js'
 import { useStore } from './useStore.js'
 
 // Fire-and-forget: lets the server push a "rest over" alert if this tab gets suspended
@@ -21,6 +22,13 @@ const cancelPushRestTimer = () => { if (useStore.getState().user) api('/api/push
 const bookRestEnd = (endsAt, totalSec) => {
   if (!MOBILE) { pushRestTimer(Math.max(1, Math.round((endsAt - Date.now()) / 1000))); return }
   const { S } = useStore.getState()
+  const active = S.active
+  const workoutNotice = buildWorkoutNotification(active, {
+    setsDone: setsDoneActive(active),
+    setsTotal: setUnitsTotal(active?.entries),
+    accent: S.accent,
+  })
+  if (workoutNotice) syncWorkoutNotification(workoutNotice).catch(() => {})
   armRestAlert(endsAt, { title: t('Rest over — next set!'), countdownTitle: t('Rest'), totalSec, accent: S.accent, sound: !!S.sound, vibrate: S.vibrate !== false })
     .then(ok => {
       // Only for the rest that asked: one skipped or moved since then has booked its own end.

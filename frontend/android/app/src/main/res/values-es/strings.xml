@@ -1,0 +1,6 @@
+<resources>
+    <string name="rest_countdown_channel_name">Temporizador de entrenamiento</string>
+    <string name="rest_channel_name">Temporizador de descanso</string>
+    <string name="rest_quiet_channel_name">Temporizador de descanso sin vibración</string>
+    <string name="rest_channel_desc">Estado del entrenamiento y cuenta atrás del descanso. La pantalla de bloqueo solo los muestra si se permiten las notificaciones.</string>
+</resources>

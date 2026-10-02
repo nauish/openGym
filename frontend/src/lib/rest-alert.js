@@ -37,8 +37,8 @@ export function buildRestAlert({ at, title, countdownTitle, totalSec, accent, so
     countdownTitle: countdownTitle || t('Rest'),
     pause: t('Pause'),
     resume: t('Resume'),
-    minus: '− 15s',
-    plus: '+ 15s',
+    minus: t('− 15s'),
+    plus: t('+ 15s'),
     skip: t('Skip'),
     accent: colors.accent,
     ink: colors.ink,
@@ -98,6 +98,44 @@ export function disarmRestAlert() {
   enqueue(async () => {
     try { await cancelDelivered() } catch { /* the next arm replaces this alarm */ }
   })
+}
+
+/** Builds the localized native-notification snapshot from the active session. */
+export function buildWorkoutNotification(active, { setsDone = 0, setsTotal = 0, accent = 'lime' } = {}) {
+  if (!active?.id || active.backfill || active.editingWorkoutId) return null
+  const count = `${Math.max(0, setsDone)}/${Math.max(0, setsTotal)}`
+  const colors = accentColors(accent)
+  return {
+    sessionId: String(active.id),
+    title: active.name || t('Workout'),
+    startedAt: active.start,
+    setsDone: Math.max(0, setsDone),
+    setsTotal: Math.max(0, setsTotal),
+    workoutText: `${t('Workout')} · ${t('{0} sets', count)}`,
+    restText: `${t('Rest')} · ${t('{0} sets', count)}`,
+    pausedLabel: t('Paused'),
+    pause: t('Pause'),
+    resume: t('Resume'),
+    minus: t('− 15s'),
+    plus: t('+ 15s'),
+    skip: t('Skip'),
+    accent: colors.accent,
+    ink: colors.ink,
+  }
+}
+
+/** Posts, refreshes, or clears the persistent workout notification on Android. */
+export function syncWorkoutNotification(snapshot, { requestPermission = false } = {}) {
+  if (!MOBILE) return Promise.resolve(false)
+  return enqueue(async () => {
+    const p = await restPlugin()
+    if (!p) return false
+    if (snapshot && requestPermission) await ensureNotifPermission()
+    await p.RestAlert.syncWorkout(snapshot
+      ? { active: true, ...snapshot }
+      : { active: false })
+    return true
+  }).catch(() => false)
 }
 
 // The rest was paused in the app (#193): the notification stops its clock at the time held and

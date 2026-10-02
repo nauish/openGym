@@ -1,0 +1,6 @@
+<resources>
+    <string name="rest_countdown_channel_name">Edzésidőzítő</string>
+    <string name="rest_channel_name">Pihenőidőzítő</string>
+    <string name="rest_quiet_channel_name">Pihenőidőzítő rezgés nélkül</string>
+    <string name="rest_channel_desc">Aktív edzésállapot és a pihenő visszaszámlálása. A zárolási képernyő csak akkor mutatja, ha ott engedélyezettek az értesítések.</string>
+</resources>

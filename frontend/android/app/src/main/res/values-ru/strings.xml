@@ -1,0 +1,6 @@
+<resources>
+    <string name="rest_countdown_channel_name">Таймер тренировки</string>
+    <string name="rest_channel_name">Таймер отдыха</string>
+    <string name="rest_quiet_channel_name">Таймер отдыха без вибрации</string>
+    <string name="rest_channel_desc">Состояние текущей тренировки и обратный отсчёт отдыха. Экран блокировки показывает их, только если уведомления там разрешены.</string>
+</resources>

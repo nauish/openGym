@@ -69,7 +69,8 @@ public class RestAlertPlugin extends Plugin {
             return;
         }
         RestAlert.setAccentColor((int) number(call, "accent", 0xFF30D158L), (int) number(call, "ink", 0xFF000000L));
-        RestAlert.setLabels(
+        WorkoutNotificationStore.updateLabels(
+                ctx.getApplicationContext(),
                 call.getString("pause", "Pause"),
                 call.getString("resume", "Resume"),
                 call.getString("minus", "\u2212 15s"),
@@ -118,10 +119,26 @@ public class RestAlertPlugin extends Plugin {
         }
         Context app = ctx.getApplicationContext();
         RestAlert.cancelAlarmOnly(app, (int) number(call, "id", RestAlert.NOTIFICATION_ID));
+        WorkoutNotificationState state = WorkoutNotification.savedState(app);
+        if (state.rest == null) {
+            call.resolve();
+            return;
+        }
+        long leftMs = number(call, "leftMs", 0);
+        long totalMs = number(call, "totalMs", state.rest.totalMs);
+        if (leftMs <= 0) {
+            call.resolve();
+            return;
+        }
+        WorkoutNotification.setRest(app, state.rest.endsAt, totalMs, true, leftMs, state.accent, state.ink);
+        if (state.dismissed) {
+            call.resolve();
+            return;
+        }
         Intent i = new Intent(app, RestTimerService.class);
         i.setAction(RestAlert.ACTION_HOLD);
-        i.putExtra("leftMs", number(call, "leftMs", 0));
-        i.putExtra("totalMs", number(call, "totalMs", 0));
+        i.putExtra("leftMs", leftMs);
+        i.putExtra("totalMs", totalMs);
         try { app.startService(i); } catch (Exception ignored) { /* no countdown on screen to hold */ }
         call.resolve();
     }
@@ -133,12 +150,60 @@ public class RestAlertPlugin extends Plugin {
         RestAlert.setAccentColor(color, ink);
         Context ctx = getContext();
         if (ctx != null) {
-            Intent i = new Intent(ctx, RestTimerService.class);
-            i.setAction(RestAlert.ACTION_ACCENT);
-            i.putExtra("accent", color);
-            i.putExtra("ink", ink);
-            try { ctx.startService(i); } catch (Exception ignored) { /* no rest running */ }
+            WorkoutNotificationStore.updateTheme(ctx, color, ink);
+            WorkoutNotification.postCurrent(ctx);
         }
+        call.resolve();
+    }
+
+    /**
+     * Posts or updates the one notification for an active workout. All user-facing copy is
+     * supplied by the app's locale packs so the Java layer never chooses a display language.
+     */
+    @PluginMethod
+    public void syncWorkout(PluginCall call) {
+        Context ctx = getContext();
+        if (ctx == null) {
+            call.reject("no context");
+            return;
+        }
+        Context app = ctx.getApplicationContext();
+        if (!Boolean.TRUE.equals(call.getBoolean("active", Boolean.FALSE))) {
+            WorkoutNotification.clearSession(app);
+            call.resolve();
+            return;
+        }
+        String sessionId = call.getString("sessionId", "");
+        if (sessionId == null || sessionId.isEmpty()) {
+            call.reject("sessionId is required for an active workout notification");
+            return;
+        }
+        int accent = (int) number(call, "accent", 0xFF30D158L);
+        int ink = (int) number(call, "ink", 0xFF000000L);
+        String pause = call.getString("pause", "Pause");
+        String resume = call.getString("resume", "Resume");
+        String minus = call.getString("minus", "− 15s");
+        String plus = call.getString("plus", "+ 15s");
+        String skip = call.getString("skip", "Skip");
+        RestAlert.setAccentColor(accent, ink);
+        WorkoutNotification.syncSession(
+                app,
+                sessionId,
+                call.getString("title", "Workout"),
+                number(call, "startedAt", System.currentTimeMillis()),
+                (int) number(call, "setsDone", 0),
+                (int) number(call, "setsTotal", 0),
+                call.getString("workoutText", "Workout"),
+                call.getString("restText", "Rest"),
+                call.getString("pausedLabel", "Paused"),
+                pause,
+                resume,
+                minus,
+                plus,
+                skip,
+                accent,
+                ink
+        );
         call.resolve();
     }
 

@@ -14,6 +14,8 @@ import { installViewportGuard } from './lib/viewport-guard.js'
 import { installChipDrag } from './lib/hchips.js'
 import { syncPushSubscription } from './lib/push.js'
 import { MOBILE } from './lib/mobile.js'
+import { buildWorkoutNotification, syncWorkoutNotification } from './lib/rest-alert.js'
+import { setsDoneActive, setUnitsTotal } from './lib/history.js'
 import { exitWorkoutEdit, startFlow } from './sheets.jsx'
 import Icon from './components/Icon.jsx'
 import TabBar from './components/TabBar.jsx'
@@ -73,6 +75,18 @@ function Shell() {
   const isGuest = useStore(s => s.isGuest())
   const needsMobileOnboarding = useStore(s => s.needsMobileOnboarding)
   const langV = useLang()   // re-renders the whole shell when the language (pack) changes
+  const workoutNotice = buildWorkoutNotification(S.active, {
+    setsDone: setsDoneActive(S.active),
+    setsTotal: setUnitsTotal(S.active?.entries),
+    accent: S.accent,
+  })
+  // A primitive key keeps ordinary store writes (weight edits, notes, etc.) from reposting the
+  // notification. It changes only when its visible session summary or selected language changes.
+  const workoutNoticeKey = JSON.stringify(workoutNotice)
+  useEffect(() => {
+    if (!MOBILE || !ready) return
+    syncWorkoutNotification(workoutNoticeKey === 'null' ? null : JSON.parse(workoutNoticeKey)).catch(() => {})
+  }, [ready, workoutNoticeKey, langV])
   useEffect(() => { setNav(navigate) }, [navigate])
   const lastEditPath = useRef(loc.pathname)
   // Any in-app route exit, browser back included, returns to the persisted draft and asks for a

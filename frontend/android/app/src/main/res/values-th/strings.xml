@@ -1,0 +1,6 @@
+<resources>
+    <string name="rest_countdown_channel_name">ตัวจับเวลาการออกกำลังกาย</string>
+    <string name="rest_channel_name">ตัวจับเวลาพัก</string>
+    <string name="rest_quiet_channel_name">ตัวจับเวลาพักแบบไม่สั่น</string>
+    <string name="rest_channel_desc">สถานะการออกกำลังกายและเวลาพักที่กำลังนับถอยหลัง หน้าจอล็อกจะแสดงเมื่ออนุญาตการแจ้งเตือนเท่านั้น</string>
+</resources>

@@ -1,0 +1,6 @@
+<resources>
+    <string name="rest_countdown_channel_name">مؤقّت التمرين</string>
+    <string name="rest_channel_name">مؤقّت الراحة</string>
+    <string name="rest_quiet_channel_name">مؤقّت الراحة بدون اهتزاز</string>
+    <string name="rest_channel_desc">حالة التمرين النشط والعد التنازلي للراحة. لا تعرض شاشة القفل هذه المعلومات إلا إذا سمحت الإعدادات بذلك.</string>
+</resources>

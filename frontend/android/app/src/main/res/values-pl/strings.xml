@@ -1,0 +1,6 @@
+<resources>
+    <string name="rest_countdown_channel_name">Timer treningu</string>
+    <string name="rest_channel_name">Timer odpoczynku</string>
+    <string name="rest_quiet_channel_name">Timer odpoczynku bez wibracji</string>
+    <string name="rest_channel_desc">Bieżący stan treningu i odliczanie odpoczynku. Ekran blokady pokazuje je tylko wtedy, gdy powiadomienia są tam dozwolone.</string>
+</resources>
