@@ -373,9 +373,9 @@ export const useStore = create((set, get) => {
     const S = get().S
     let owner = null
     try { owner = localStorage.getItem('gym_owner') } catch { /* unknown — the file is then nobody's */ }
-    await nativeSave(S)
-    await writeJsonFile(MIRROR_OWNER_FILE, { owner, ts: S._ts || 0 })
-  }).catch(() => {}))
+    if (!(await nativeSave(S))) return false
+    return await writeJsonFile(MIRROR_OWNER_FILE, { owner, ts: S._ts || 0 })
+  }).catch(() => false))
   // Mobile build: mirror the state into a file in the app's data directory (survives WebView
   // storage eviction) and keep the native reminder schedule in step with the weekly plan.
   // `now` skips the wait and returns the write, for a copy that replaced the last one wholesale.
@@ -961,6 +961,12 @@ export const useStore = create((set, get) => {
         clearTimeout(backupTm)
         backupTm = setTimeout(() => { backupTm = null; get().autoBackupNow() }, AUTO_BACKUP_SOON_MS)
       }
+    },
+    // Native notification actions stay queued until the active workout has reached the durable
+    // app-data mirror. Regular edits remain debounced; replay explicitly flushes before ack.
+    async flushNativePersistence() {
+      if (!MOBILE) return true
+      return (await nativePersist(true)) === true
     },
     // An edit of a saved workout (lib/session-edit.js) is saved or dropped like any other change:
     // the store's own sync takes it to the server, and a conflict on the way is settled by

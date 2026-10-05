@@ -87,6 +87,8 @@ public final class RestAlert {
         lastSound = sound;
         lastVibrate = vibrate;
         lastChannel = channelId;
+        persistSettings(ctx, lastAlertTitle, sound, vibrate, channelId,
+                visibility, importance, localOnly, countdownTitle);
         startCountdown(ctx, at, totalMs);
     }
 
@@ -113,6 +115,7 @@ public final class RestAlert {
      * and the alarm is only the fallback for a countdown that was not running.
      */
     static void fireFromCountdown(Context ctx, long at) {
+        restoreSettings(ctx);
         cancelAlarmOnly(ctx, NOTIFICATION_ID);
         Intent intent = alarmIntent(ctx);
         intent.putExtra("id", NOTIFICATION_ID);
@@ -120,6 +123,9 @@ public final class RestAlert {
         intent.putExtra("sound", lastSound);
         intent.putExtra("vibrate", lastVibrate);
         intent.putExtra("channelId", lastChannel);
+        intent.putExtra("visibility", "public");
+        intent.putExtra("importance", "high");
+        intent.putExtra("localOnly", false);
         intent.putExtra("at", at);
         new Thread(() -> fire(ctx, intent), "opengym-rest").start();
     }
@@ -135,6 +141,8 @@ public final class RestAlert {
     public static void fire(Context ctx, Intent intent) {
         if (!claim(intent.getLongExtra("at", 0))) return;
         WorkoutNotification.finishRest(ctx);
+        WorkoutNotificationState workout = WorkoutNotification.savedState(ctx);
+        setAccentColor(workout.accent, workout.ink);
         PowerManager.WakeLock cpu = null;
         try {
             PowerManager pm = (PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
@@ -285,6 +293,7 @@ public final class RestAlert {
     }
 
     static void updateAlarm(Context ctx, long at) {
+        restoreSettings(ctx);
         if (at <= System.currentTimeMillis()) {
             cancelAlarmOnly(ctx, NOTIFICATION_ID);
             return;
@@ -322,6 +331,9 @@ public final class RestAlert {
         // A user dismissal is session-scoped. Keep the alarm for the end, but do not recreate a
         // foreground notification that the user explicitly removed.
         if (WorkoutNotification.isDismissed(ctx)) return;
+        // Read/recovery and duplicate schedule calls are safe while the existing service has the
+        // same absolute deadline. Avoid resetting its ticker or CPU wake lock unnecessarily.
+        if (RestTimerService.isRunningFor(endsAt)) return;
         Intent i = new Intent(ctx, RestTimerService.class);
         i.putExtra("endsAt", endsAt);
         i.putExtra("totalMs", duration);
@@ -331,6 +343,65 @@ public final class RestAlert {
         } catch (Exception e) {
             Log.w("openGym", "rest countdown not started", e);
         }
+    }
+
+    /**
+     * Repairs the narrow crash window after a native Done command committed its rest state but
+     * before its receiver reached AlarmManager/service scheduling. Only a native action marker
+     * can trigger this path; ordinary JS-started rests and paused rests are left alone.
+     */
+    static boolean ensureNativeActionRest(Context ctx) {
+        WorkoutNotificationState state = WorkoutNotification.savedState(ctx);
+        WorkoutNotificationStore.NativeRestRecovery recovery =
+                WorkoutNotificationStore.nativeRestRecovery(ctx, state);
+        if (recovery == null || state.rest == null) return false;
+        java.util.Map<String, Object> cfg = recovery.restAlert;
+        String title = settingString(cfg, "title", "Rest over — next set!");
+        String countdownTitle = settingString(cfg, "countdownTitle", state.restText);
+        String channel = settingString(cfg, "channelId", CHANNEL_ID);
+        String visibility = settingString(cfg, "visibility", "public");
+        String importance = settingString(cfg, "importance", "high");
+        boolean sound = settingBoolean(cfg, "sound", true);
+        boolean vibrate = settingBoolean(cfg, "vibrate", true);
+        boolean localOnly = settingBoolean(cfg, "localOnly", false);
+        setAccentColor(state.accent, state.ink);
+        restoreSettings(ctx);
+        schedule(ctx, state.rest.endsAt, NOTIFICATION_ID, title, sound, vibrate, channel,
+                visibility, importance, localOnly, countdownTitle, state.rest.totalMs);
+        return true;
+    }
+
+    private static String settingString(java.util.Map<String, Object> values, String key, String fallback) {
+        Object value = values.get(key);
+        return value instanceof String && !((String) value).isEmpty() ? (String) value : fallback;
+    }
+
+    private static boolean settingBoolean(java.util.Map<String, Object> values, String key, boolean fallback) {
+        Object value = values.get(key);
+        return value instanceof Boolean ? (Boolean) value : fallback;
+    }
+
+    private static void persistSettings(Context ctx, String title, boolean sound, boolean vibrate,
+                                        String channel, String visibility, String importance,
+                                        boolean localOnly, String countdownTitle) {
+        ctx.getSharedPreferences("rest_alert_settings", Context.MODE_PRIVATE).edit()
+                .putString("title", title)
+                .putBoolean("sound", sound)
+                .putBoolean("vibrate", vibrate)
+                .putString("channel", channel)
+                .putString("visibility", visibility == null ? "public" : visibility)
+                .putString("importance", importance == null ? "high" : importance)
+                .putBoolean("localOnly", localOnly)
+                .putString("countdownTitle", countdownTitle == null ? "Rest" : countdownTitle)
+                .commit();
+    }
+
+    private static void restoreSettings(Context ctx) {
+        android.content.SharedPreferences p = ctx.getSharedPreferences("rest_alert_settings", Context.MODE_PRIVATE);
+        lastAlertTitle = p.getString("title", lastAlertTitle);
+        lastSound = p.getBoolean("sound", lastSound);
+        lastVibrate = p.getBoolean("vibrate", lastVibrate);
+        lastChannel = p.getString("channel", lastChannel);
     }
 
     static void stopCountdown(Context ctx) {

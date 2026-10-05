@@ -6,7 +6,7 @@ import { t } from '../lib/i18n.js'
 import { deviceId } from '../lib/push.js'
 import { MOBILE } from '../lib/mobile.js'
 import { armRestAlert, bindNativeRest, buildWorkoutNotification, disarmRestAlert, holdRestAlert, syncWorkoutNotification } from '../lib/rest-alert.js'
-import { completeCurrentWorkoutSet } from '../lib/workout-complete-set.js'
+import { completeCurrentWorkoutSet, reconcilePendingWorkoutActions } from '../lib/workout-complete-set.js'
 import { setsDoneActive, setUnitsTotal } from '../lib/history.js'
 import { useStore } from './useStore.js'
 
@@ -29,6 +29,9 @@ const bookRestEnd = (endsAt, totalSec) => {
     setsTotal: setUnitsTotal(active?.entries),
     accent: S.accent,
     restForIdx: useUI.getState().timer?.forIdx,
+    defaultRestSec: S.restSec,
+    sound: !!S.sound,
+    vibrate: S.vibrate !== false,
   })
   if (workoutNotice) syncWorkoutNotification(workoutNotice).catch(() => {})
   armRestAlert(endsAt, { title: t('Rest over — next set!'), countdownTitle: t('Rest'), totalSec, accent: S.accent, sound: !!S.sound, vibrate: S.vibrate !== false })
@@ -126,6 +129,9 @@ const runRest = (set, get) => {
           setsDone: setsDoneActive(active),
           setsTotal: setUnitsTotal(active?.entries),
           accent: S?.accent,
+          defaultRestSec: S?.restSec,
+          sound: !!S?.sound,
+          vibrate: S?.vibrate !== false,
         })
         if (workoutNotice) syncWorkoutNotification(workoutNotice).catch(() => {})
       }
@@ -248,16 +254,16 @@ export const useUI = create((set, get) => ({
   // first, and this brings the bar in the app to the same place — a pause stops the ticking here
   // too, a resume starts it again from the notification's end, and +15 s on a rest the app had
   // already called Ready opens it again. Nothing is sent back: the notification already shows it.
-  followNativeRest({ endsAt, left, total, paused }) {
+  followNativeRest({ endsAt, left, total, paused, forIdx }) {
     const tm = get().timer
-    const forIdx = tm?.forIdx
+    const ownerIdx = Number.isInteger(forIdx) ? forIdx : tm?.forIdx
     if (paused) {
       stopRestTicking()
-      set({ timer: { left, total, endsAt, forIdx, paused: true } })
+      set({ timer: { left, total, endsAt, forIdx: ownerIdx, paused: true, native: true } })
       return
     }
     const ticking = !!timerInt && !!tm && !tm.paused && !tm.ready
-    set({ timer: { left, total, endsAt, forIdx } })
+    set({ timer: { left, total, endsAt, forIdx: ownerIdx, native: true } })
     if (ticking) return
     // As in resumeRest: a hide from while it was held or over is no catch-up of this countdown.
     pageHiddenAt = document.hidden ? Date.now() : null
@@ -362,6 +368,10 @@ bindNativeRest(ev => {
   if (!ev) return
   if (ev.type === 'skip') { useUI.getState().stopRest(); return }
   if (ev.type === 'complete_set') {
+    if (ev.actionId) {
+      if (useStore.getState().ready) reconcilePendingWorkoutActions().catch(() => {})
+      return
+    }
     const active = useStore.getState().S?.active
     if (ev.sessionId && String(active?.id) !== ev.sessionId) return
     completeCurrentWorkoutSet()

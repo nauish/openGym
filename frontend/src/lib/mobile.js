@@ -45,7 +45,8 @@ export async function nativeSave(state) {
   try {
     const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem')
     await Filesystem.writeFile({ path: FILE, directory: Directory.Data, data: JSON.stringify(state), encoding: Encoding.UTF8 })
-  } catch (e) { /* keep the localStorage copy */ }
+    return true
+  } catch (e) { return false /* keep the localStorage copy */ }
 }
 
 // "Connect to my server" mode (lib/remote.js): which of local-only / a paired remote account this
@@ -67,7 +68,8 @@ export async function writeJsonFile(name, data) {
   try {
     const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem')
     await Filesystem.writeFile({ path: name, directory: Directory.Data, data: JSON.stringify(data), encoding: Encoding.UTF8 })
-  } catch (e) { /* not a Capacitor build, or the write failed — the caller's in-memory copy stands */ }
+    return true
+  } catch (e) { return false /* not a Capacitor build, or the write failed — the caller's in-memory copy stands */ }
 }
 
 export async function loadRemoteFile() {

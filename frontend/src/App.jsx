@@ -1,10 +1,10 @@
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation, useNavigationType } from 'react-router-dom'
 import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { bindUI } from './components/ui.jsx'
 import { ACCENTS, setWeightDecimals } from './lib/format.js'
-import { setLang, useLang, baseLang } from './lib/i18n.js'
+import { setLang, useLang, baseLang, t } from './lib/i18n.js'
 import { effectiveLang } from './lib/default-lang.js'
 import { setPlayOnSilent, setVibrate } from './lib/sound.js'
 import { setNav } from './lib/nav.js'
@@ -13,9 +13,10 @@ import { useWakeLock } from './lib/wakelock.js'
 import { installViewportGuard } from './lib/viewport-guard.js'
 import { installChipDrag } from './lib/hchips.js'
 import { syncPushSubscription } from './lib/push.js'
-import { MOBILE } from './lib/mobile.js'
+import { MOBILE, isAndroid, onAppActive } from './lib/mobile.js'
 import { buildWorkoutNotification, syncWorkoutNotification } from './lib/rest-alert.js'
 import { setsDoneActive, setUnitsTotal } from './lib/history.js'
+import { reconcilePendingWorkoutActions, subscribeWorkoutActionRecovery } from './lib/workout-complete-set.js'
 import { exitWorkoutEdit, startFlow } from './sheets.jsx'
 import Icon from './components/Icon.jsx'
 import TabBar from './components/TabBar.jsx'
@@ -67,6 +68,37 @@ function Shell() {
   const loc = useLocation()
   const navType = useNavigationType()
   const { S, user, ready } = useStore()
+  const [workoutRecoveryState, setWorkoutRecoveryState] = useState(MOBILE ? 'pending' : 'ready')
+  const workoutRecoveryRef = useRef(null)
+  const workoutRecoveryEpochRef = useRef(0)
+  const recoverWorkoutActions = () => {
+    if (workoutRecoveryRef.current) return workoutRecoveryRef.current
+    setWorkoutRecoveryState('pending')
+    const run = reconcilePendingWorkoutActions().catch(error => {
+      console.error('Could not recover native workout actions', error)
+      return { available: false, blocked: true }
+    }).finally(() => {
+      workoutRecoveryRef.current = null
+    })
+    workoutRecoveryRef.current = run
+    return run
+  }
+  const workoutRecoveryReady = workoutRecoveryState === 'ready'
+  // Native Done events can arrive while the WebView is already foregrounded; observe the
+  // reconciler itself so that path is gated just like a cold start or resume.
+  useEffect(() => subscribeWorkoutActionRecovery(event => {
+    if (event.state === 'pending') {
+      workoutRecoveryEpochRef.current++
+      setWorkoutRecoveryState('pending')
+      return
+    }
+    const epoch = workoutRecoveryEpochRef.current
+    const result = event.result
+    Promise.resolve(result?.available === false ? isAndroid() : false).then(androidBridgeUnavailable => {
+      if (workoutRecoveryEpochRef.current !== epoch) return
+      setWorkoutRecoveryState(!result?.blocked && !androidBridgeUnavailable ? 'ready' : 'blocked')
+    })
+  }), [])
   // iOS: whether timer sounds get past the ring/silent switch (Settings → Sounds). Page-level,
   // so it is applied here on load and on change rather than at each beep.
   useEffect(() => { setPlayOnSilent(!!S.soundOnSilent) }, [S.soundOnSilent])
@@ -81,14 +113,34 @@ function Shell() {
     setsTotal: setUnitsTotal(S.active?.entries),
     accent: S.accent,
     restForIdx,
+    defaultRestSec: S.restSec,
+    sound: !!S.sound,
+    vibrate: S.vibrate !== false,
   })
   // A primitive key keeps ordinary store writes (weight edits, notes, etc.) from reposting the
   // notification. It changes only when its visible session summary or selected language changes.
   const workoutNoticeKey = JSON.stringify(workoutNotice)
   useEffect(() => {
     if (!MOBILE || !ready) return
+    recoverWorkoutActions()
+  }, [ready])
+  // A Done action can be accepted while this WebView is paused. Re-read the durable queue every
+  // time Capacitor or the WebView brings the app back, before allowing a workout snapshot sync.
+  useEffect(() => {
+    if (!MOBILE) return
+    const recover = () => {
+      if (!useStore.getState().ready) return
+      recoverWorkoutActions()
+    }
+    const onVisible = () => { if (document.visibilityState === 'visible') recover() }
+    document.addEventListener('visibilitychange', onVisible)
+    onAppActive(recover)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
+  useEffect(() => {
+    if (!MOBILE || !ready || !workoutRecoveryReady) return
     syncWorkoutNotification(workoutNoticeKey === 'null' ? null : JSON.parse(workoutNoticeKey)).catch(() => {})
-  }, [ready, workoutNoticeKey, langV])
+  }, [ready, workoutRecoveryReady, workoutNoticeKey, langV])
   useEffect(() => { setNav(navigate) }, [navigate])
   const lastEditPath = useRef(loc.pathname)
   // Any in-app route exit, browser back included, returns to the persisted draft and asks for a
@@ -179,6 +231,23 @@ function Shell() {
     <div id="app">
       <div style={{ paddingTop: '44vh', display: 'flex', justifyContent: 'center', fontSize: 34, color: 'var(--label-3)' }}>
         <Icon name="dumbbell" />
+      </div>
+    </div>
+  )
+
+  // Do not mount workout editors or other routes until a notification Done action has been
+  // reconciled. A blocked same-session command remains durable in Android and can be retried.
+  if (MOBILE && authed && (!ready || !workoutRecoveryReady)) return (
+    <div id="app" className="vfade" style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 24 }}>
+      <div role="status" aria-live="polite" style={{ maxWidth: 360, textAlign: 'center', color: 'var(--label)' }}>
+        <div style={{ fontSize: 34, color: 'var(--acc)', marginBottom: 14 }}><Icon name="dumbbell" /></div>
+        {workoutRecoveryState === 'blocked' ? <>
+          <h2 style={{ margin: '0 0 8px' }}>{t('Recovery')}</h2>
+          <p style={{ color: 'var(--label-2)', lineHeight: 1.5, margin: '0 0 18px' }}>
+            A notification update is still waiting to be saved. Editing is paused to protect your workout. Tap “Try again” after syncing finishes.
+          </p>
+          <button className="btn primary" onClick={() => recoverWorkoutActions()}>{t('Try again')}</button>
+        </> : <p style={{ color: 'var(--label-2)', margin: 0 }}>{t('Syncing…')}</p>}
       </div>
     </div>
   )

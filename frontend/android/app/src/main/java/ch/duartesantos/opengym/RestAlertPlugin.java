@@ -57,10 +57,15 @@ public class RestAlertPlugin extends Plugin {
     }
 
     static void emitCompleteSet(String sessionId) {
+        emitCompleteSet(sessionId, null);
+    }
+
+    static void emitCompleteSet(String sessionId, String actionId) {
         if (instance == null) return;
         JSObject data = new JSObject();
         data.put("type", "complete_set");
         data.put("sessionId", sessionId);
+        if (actionId != null && !actionId.isEmpty()) data.put("actionId", actionId);
         instance.notifyListeners("rest", data);
     }
 
@@ -196,6 +201,8 @@ public class RestAlertPlugin extends Plugin {
         String exerciseName = call.getString("exerciseName", "");
         String setProgress = call.getString("setProgress", "");
         String completeLabel = call.getString("completeLabel", "");
+        JSObject data = call.getData();
+        org.json.JSONObject actionPlan = data == null ? null : data.optJSONObject("actionPlan");
         RestAlert.setAccentColor(accent, ink);
         WorkoutNotification.syncSession(
                 app,
@@ -218,9 +225,54 @@ public class RestAlertPlugin extends Plugin {
                 plus,
                 skip,
                 accent,
-                ink
+                ink,
+                actionPlan
         );
         call.resolve();
+    }
+
+    /** Returns durable Done commands which JS must replay against its workout store. */
+    @PluginMethod
+    public void readPendingDone(PluginCall call) {
+        Context ctx = getContext();
+        if (ctx == null) {
+            call.reject("no context");
+            return;
+        }
+        JSObject result = new JSObject();
+        Context app = ctx.getApplicationContext();
+        RestAlert.ensureNativeActionRest(app);
+        WorkoutNotificationState state = WorkoutNotification.savedState(app);
+        result.put("actions", WorkoutNotification.pendingDone(app));
+        result.put("nativeSessionId", state.sessionId);
+        result.put("finalizing", state.finalizing);
+        if (state.rest != null) {
+            JSObject rest = new JSObject();
+            rest.put("sessionId", state.sessionId);
+            rest.put("endsAt", state.rest.endsAt);
+            rest.put("totalMs", state.rest.totalMs);
+            rest.put("leftMs", state.rest.remainingAt(System.currentTimeMillis()));
+            rest.put("paused", state.rest.paused);
+            rest.put("forIdx", state.rest.forIdx);
+            result.put("rest", rest);
+        }
+        call.resolve(result);
+    }
+
+    /** Removes one replayed command after JS has applied the set transition. */
+    @PluginMethod
+    public void ackPendingDone(PluginCall call) {
+        Context ctx = getContext();
+        if (ctx == null) {
+            call.reject("no context");
+            return;
+        }
+        String sessionId = call.getString("sessionId", "");
+        String actionId = call.getString("actionId", "");
+        JSObject result = new JSObject();
+        result.put("acknowledged", WorkoutNotification.acknowledgeDone(
+                ctx.getApplicationContext(), sessionId, actionId));
+        call.resolve(result);
     }
 
     // PluginCall.getLong only accepts a Long, and a JS timestamp often arrives as a Double

@@ -53,8 +53,10 @@ final class WorkoutIslandCard {
             card.setContentDescription(R.id.island_secondary, state.skipLabel);
             card.setOnClickPendingIntent(R.id.island_secondary, WorkoutNotificationRenderer.control(context, RestAlert.ACTION_SKIP, 54));
         } else {
-            card.setContentDescription(R.id.island_primary, state.completeSetLabel);
-            card.setOnClickPendingIntent(R.id.island_primary, WorkoutNotificationRenderer.completeControl(context, 55));
+            card.setContentDescription(R.id.island_primary,
+                    state.finalizing ? state.title : state.completeSetLabel);
+            card.setOnClickPendingIntent(R.id.island_primary, state.finalizing ? openIntent
+                    : WorkoutNotificationRenderer.completeControl(context, 55, state.sessionId, state.actionId));
             card.setContentDescription(R.id.island_secondary, state.title);
             card.setOnClickPendingIntent(R.id.island_secondary, openIntent);
         }

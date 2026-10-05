@@ -15,6 +15,8 @@ import { nextOpenSet } from './workout-keys.js'
 import { isWarmupRow } from './workout-model.js'
 import { ACCENTS, ACCENT_INK, argb } from './format.js'
 import { MOBILE, isAndroid } from './mobile.js'
+import { buildWorkoutActionPlan } from './workout-action-plan.js'
+import { setsDoneActive, setUnitsTotal } from './history.js'
 
 export const REST_ALERT_ID = 42
 export const REST_CHANNEL_ID = 'rest-over'
@@ -105,7 +107,7 @@ export function disarmRestAlert() {
 }
 
 /** Builds the localized native-notification snapshot from the active session. */
-export function buildWorkoutNotification(active, { setsDone = 0, setsTotal = 0, accent = 'lime', restForIdx = null } = {}) {
+function buildWorkoutNotificationBase(active, { setsDone = 0, setsTotal = 0, accent = 'lime', restForIdx = null } = {}) {
   if (!active?.id || active.backfill || active.editingWorkoutId) return null
   const count = `${Math.max(0, setsDone)}/${Math.max(0, setsTotal)}`
   const setSummary = t('{0} sets', count)
@@ -161,6 +163,63 @@ export function buildWorkoutNotification(active, { setsDone = 0, setsTotal = 0, 
   }
 }
 
+/**
+ * Builds the visible workout notification and its ordered native Done plan. Each planned
+ * notification is the complete snapshot Android should show immediately after that action.
+ */
+export function buildWorkoutNotification(active, options = {}) {
+  const { defaultRestSec = 0, sound = true, vibrate = true } = options
+  const snapshot = buildWorkoutNotificationBase(active, options)
+  if (!snapshot) return null
+
+  const actions = buildWorkoutActionPlan(active, { defaultRestSec }).map(step => {
+    const beforeNotification = buildWorkoutNotificationBase(step.beforeActive, {
+      setsDone: setsDoneActive(step.beforeActive),
+      setsTotal: setUnitsTotal(step.beforeActive.entries),
+      accent: options.accent,
+    })
+    const postActionNotification = buildWorkoutNotificationBase(step.afterActive, {
+      setsDone: setsDoneActive(step.afterActive),
+      setsTotal: setUnitsTotal(step.afterActive.entries),
+      accent: options.accent,
+      restForIdx: step.restMs > 0 ? step.entryIdx : null,
+    })
+    const notification = step.restMs > 0
+      ? { ...postActionNotification, restForIdx: step.entryIdx }
+      : postActionNotification
+    const action = {
+      actionId: step.actionId,
+      restMs: step.restMs,
+      notification,
+      beforeNotification,
+      final: step.final,
+    }
+    if (step.restMs > 0) {
+      action.restForIdx = step.restForIdx
+      const alert = buildRestAlert({
+        at: Date.now() + step.restMs,
+        totalSec: step.restMs / 1000,
+        accent: options.accent,
+        sound,
+        vibrate,
+      })
+      if (alert) action.restAlert = {
+        title: alert.title,
+        countdownTitle: alert.countdownTitle,
+        sound: alert.sound,
+        vibrate: alert.vibrate,
+        channelId: alert.channelId,
+        visibility: alert.visibility,
+        importance: alert.importance,
+        localOnly: alert.localOnly,
+      }
+    }
+    return action
+  })
+
+  return { ...snapshot, actionPlan: { sessionId: String(active.id), actions } }
+}
+
 /** Posts, refreshes, or clears the persistent workout notification on Android. */
 export function syncWorkoutNotification(snapshot, { requestPermission = false } = {}) {
   if (!MOBILE) return Promise.resolve(false)
@@ -172,6 +231,29 @@ export function syncWorkoutNotification(snapshot, { requestPermission = false } 
       ? { active: true, ...snapshot }
       : { active: false })
     return true
+  }).catch(() => false)
+}
+
+/** Read durable Done commands and the live native rest snapshot. */
+export function readPendingWorkoutState() {
+  if (!MOBILE) return Promise.resolve(null)
+  return enqueue(async () => {
+    const p = await restPlugin()
+    if (!p) return null
+    const result = await p.RestAlert.readPendingDone()
+    if (!result || !Array.isArray(result.actions)) return { actions: [] }
+    return result
+  }).catch(() => null)
+}
+
+/** Acknowledge a native Done command after its workout transition has been persisted in JS. */
+export function ackPendingWorkoutAction({ sessionId, actionId } = {}) {
+  if (!MOBILE || !sessionId || !actionId) return Promise.resolve(false)
+  return enqueue(async () => {
+    const p = await restPlugin()
+    if (!p) return false
+    const result = await p.RestAlert.ackPendingDone({ sessionId, actionId })
+    return result?.acknowledged === true
   }).catch(() => false)
 }
 

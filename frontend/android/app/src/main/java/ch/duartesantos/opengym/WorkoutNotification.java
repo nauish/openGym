@@ -2,6 +2,7 @@ package ch.duartesantos.opengym;
 
 import android.app.Notification;
 import android.content.Context;
+import org.json.JSONObject;
 import android.os.Build;
 import androidx.core.app.NotificationManagerCompat;
 
@@ -19,15 +20,16 @@ final class WorkoutNotification {
                                          String setSummary,
                                          String exerciseName, String exerciseImage, String setProgress, String completeLabel,
                                          String pause, String resume, String minus, String plus,
-                                         String skip, int accent, int ink) {
+                                         String skip, int accent, int ink, JSONObject actionPlan) {
         WorkoutNotificationStore.syncSession(context, sessionId, title, startedAt, setsDone, setsTotal,
                 workoutText, restText, pausedLabel, setSummary,
                 exerciseName, exerciseImage, setProgress, completeLabel,
-                pause, resume, minus, plus, skip, accent, ink);
+                pause, resume, minus, plus, skip, accent, ink, actionPlan);
         postCurrent(context);
     }
 
     static synchronized void clearSession(Context context) {
+        if (WorkoutNotificationStore.hasPendingDone(context)) return;
         WorkoutNotificationStore.clearSession(context);
         RestAlert.cancelAlarmOnly(context, RestAlert.NOTIFICATION_ID);
         RestAlert.stopCountdown(context);
@@ -46,6 +48,40 @@ final class WorkoutNotification {
 
     static synchronized WorkoutNotificationState savedState(Context context) {
         return WorkoutNotificationStore.read(context);
+    }
+
+    static synchronized WorkoutNotificationStore.AcceptedAction acceptDone(Context context,
+                                                                           String sessionId,
+                                                                           String actionId) {
+        WorkoutNotificationStore.AcceptedAction accepted =
+                WorkoutNotificationStore.acceptDone(context, sessionId, actionId);
+        if (accepted != null) postCurrent(context);
+        return accepted;
+    }
+
+    static synchronized void acceptLegacyDone(Context context, String sessionId) {
+        WorkoutNotificationState state = savedState(context);
+        if (sessionId != null && sessionId.equals(state.sessionId) && !state.dismissed && state.rest == null) {
+            RestAlertPlugin.emitCompleteSet(sessionId);
+        }
+    }
+
+    static synchronized boolean acknowledgeDone(Context context, String sessionId, String actionId) {
+        return WorkoutNotificationStore.acknowledgeDone(context, sessionId, actionId);
+    }
+
+    static synchronized org.json.JSONArray pendingDone(Context context) {
+        org.json.JSONArray out = new org.json.JSONArray();
+        for (WorkoutActionPlan.Pending item : WorkoutNotificationStore.pendingDone(context)) {
+            JSONObject row = new JSONObject();
+            try {
+                row.put("sessionId", item.sessionId);
+                row.put("actionId", item.actionId);
+                row.put("final", item.finalAction);
+                out.put(row);
+            } catch (org.json.JSONException ignored) { /* primitive JSON values cannot fail */ }
+        }
+        return out;
     }
 
     static synchronized void finishRest(Context context) {

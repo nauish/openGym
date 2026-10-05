@@ -5,6 +5,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
@@ -75,9 +76,9 @@ final class WorkoutNotificationRenderer {
             builder.addAction(R.drawable.ic_notification_skip, state.skipLabel,
                     control(context, RestAlert.ACTION_SKIP, 54));
         } else {
-            if (state.completeSetLabel != null && !state.completeSetLabel.isEmpty()) {
+            if (!state.finalizing && state.completeSetLabel != null && !state.completeSetLabel.isEmpty()) {
                 builder.addAction(R.drawable.ic_notification_check, state.completeSetLabel,
-                        completeControl(context, 55));
+                        completeControl(context, 55, state.sessionId, state.actionId));
             }
             if (state.setsTotal > 0) {
                 builder.setProgress(state.setsTotal, Math.min(state.setsTotal, state.setsDone), false);
@@ -142,10 +143,16 @@ final class WorkoutNotificationRenderer {
                 : PendingIntent.getService(context, requestCode, intent, flags);
     }
 
-    static PendingIntent completeControl(Context context, int requestCode) {
+    static PendingIntent completeControl(Context context, int requestCode, String sessionId, String actionId) {
         Intent intent = new Intent(context, WorkoutNotificationReceiver.class)
                 .setAction(WorkoutNotification.ACTION_COMPLETE_SET)
-                .putExtra("sessionId", WorkoutNotification.savedState(context).sessionId);
+                .putExtra("sessionId", sessionId)
+                .putExtra("actionId", actionId == null ? "" : actionId);
+        // Each rendered Done button keeps its original identity. Replacing a PendingIntent with
+        // the next action ID would let an old shade card accidentally complete the new set.
+        intent.setData(new Uri.Builder().scheme("opengym").authority("workout")
+                .appendPath(sessionId == null ? "" : sessionId)
+                .appendPath(actionId == null ? "legacy" : actionId).build());
         int flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
         return PendingIntent.getBroadcast(context, requestCode, intent, flags);
     }

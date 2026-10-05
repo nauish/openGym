@@ -18,16 +18,28 @@ import androidx.core.app.NotificationManagerCompat;
  * older Android fallback cards refresh once per second while this service still checks the end.
  */
 public class RestTimerService extends Service {
+    private static volatile RestTimerService activeInstance;
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private long endsAt;
+    private volatile long endsAt;
     private long totalMs;
     private long pausedLeft;
-    private boolean paused;
-    private boolean running;
+    private volatile boolean paused;
+    private volatile boolean running;
     private boolean foregroundStarted;
     private boolean periodicNotificationRefresh;
     private PowerManager.WakeLock cpu;
     private final Runnable tick = () -> updateCountdown(true);
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        activeInstance = this;
+    }
+
+    static boolean isRunningFor(long expectedEnd) {
+        RestTimerService current = activeInstance;
+        return current != null && current.running && !current.paused && current.endsAt == expectedEnd;
+    }
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -91,6 +103,7 @@ public class RestTimerService extends Service {
     @Override
     public void onDestroy() {
         running = false;
+        if (activeInstance == this) activeInstance = null;
         handler.removeCallbacks(tick);
         releaseCpu();
         endsAt = 0;

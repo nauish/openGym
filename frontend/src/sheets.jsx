@@ -2194,6 +2194,9 @@ export function beginWorkout(routineIds, bw) {
     setsDone: setsDoneActive(active),
     setsTotal: setUnitsTotal(active.entries),
     accent: S().accent,
+    defaultRestSec: S().restSec,
+    sound: S().sound,
+    vibrate: S().vibrate,
   })
   syncWorkoutNotification(activeNotice, { requestPermission: true }).catch(() => {})
   useUI.getState().stopRest()

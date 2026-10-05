@@ -75,6 +75,19 @@ describe('buildWorkoutNotification', () => {
     expect(rest.exerciseName).not.toBe(buildWorkoutNotification(active).exerciseName)
   })
 
+  it('switches from the completed set snapshot to the next set after native rest', () => {
+    const active = {
+      id: 'resting-set-progress', start: 1000, cur: 0,
+      entries: [{ id: '0025', sets: [{ done: false }, { done: false }, { done: false }] }],
+    }
+    const actions = buildWorkoutNotification(active, { defaultRestSec: 60 }).actionPlan.actions
+
+    // Set 2's Done card shows set 2 while resting; once that rest finishes the next planned
+    // action's pre-action snapshot must show set 3 and be ready for its Done button.
+    expect(actions[1].notification.setProgress).toContain('2/3')
+    expect(actions[2].beforeNotification.setProgress).toContain('3/3')
+  })
+
   it('extracts current exercise name and set progress', () => {
     const active = {
       id: 'active-123',
@@ -102,5 +115,46 @@ describe('buildWorkoutNotification', () => {
     })
     expect(notif.exerciseName).toBeTruthy()
     expect(notif.setProgress).toContain('2/3')
+  })
+
+  it('includes the next workout snapshot and native rest settings for a Done action', () => {
+    const active = {
+      id: 'native-action-session',
+      name: 'Leg Day',
+      start: 1_700_000_000_000,
+      cur: 0,
+      entries: [{ id: '0025', sets: [{ done: false }, { done: false }] }],
+    }
+
+    const notif = buildWorkoutNotification(active, {
+      setsDone: 0,
+      setsTotal: 2,
+      accent: 'lime',
+      defaultRestSec: 60,
+      sound: false,
+      vibrate: false,
+    })
+    const [next, final] = notif.actionPlan.actions
+
+    expect(notif.actionPlan.sessionId).toBe(active.id)
+    expect(next).toMatchObject({
+      actionId: expect.stringMatching(/^wa:/),
+      restMs: 60_000,
+      final: false,
+      notification: {
+        sessionId: active.id,
+        setsDone: 1,
+        setsTotal: 2,
+      },
+      restAlert: {
+        sound: false,
+        vibrate: false,
+        channelId: REST_QUIET_CHANNEL_ID,
+        visibility: 'public',
+        importance: 'high',
+      },
+    })
+    expect(next.notification.setProgress).toContain('1/2')
+    expect(final).toMatchObject({ restMs: 0, final: true })
   })
 })
