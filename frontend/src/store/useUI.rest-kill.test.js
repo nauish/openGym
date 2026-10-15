@@ -11,6 +11,8 @@ vi.mock('../lib/rest-alert.js', () => ({
   holdRestAlert: vi.fn(),
   disarmRestAlert: vi.fn(),
   bindNativeRest: vi.fn(),
+  buildWorkoutNotification: vi.fn(() => ({})),
+  syncWorkoutNotification: vi.fn(() => Promise.resolve(true)),
 }))
 vi.mock('../lib/sound.js', () => ({ beep: vi.fn(), chime: vi.fn(), vibrate: vi.fn(), alertBuzz: vi.fn() }))
 vi.mock('../lib/api.js', () => ({ api: vi.fn(() => Promise.resolve({ ok: true })) }))
