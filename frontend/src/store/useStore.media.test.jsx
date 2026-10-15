@@ -81,9 +81,7 @@ describe('owed photos and videos', () => {
   it('going ahead anyway keeps the copy in the stash, and its files survive the sign-out', async () => {
     await signedInWithPendingPhoto()
     await media.put('c'.repeat(64), new Blob(['x']), { mime: 'image/png', pending: false })   // nobody's
-    // Purge uses millisecond timestamps and preserves files put at or after its cutoff; ensure
-    // this pre-sign-out file is definitely older than the cutoff on fast test runners.
-    await new Promise(r => setTimeout(r, 5))
+    await new Promise(r => setTimeout(r, 5))   // put before the sign-out, not during it
     const r = await useStore.getState().signOut({ force: true })
     expect(r).toMatchObject({ owed: true, media: 1, stashed: true })
     expect(useStore.getState().S.customEx).toEqual([])
